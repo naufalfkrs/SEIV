@@ -38,8 +38,23 @@ data class ScreeningResult(
     val phqItem9: Int,
 )
 
+object SessionStatus {
+    const val WAITING = "waiting_verification"
+    const val CONFIRMED = "confirmed"
+    const val COMPLETED = "completed"
+    const val CANCELLED = "cancelled"
+
+    fun label(status: String) = when (status) {
+        WAITING -> "Menunggu verifikasi"
+        CONFIRMED -> "Terkonfirmasi"
+        COMPLETED -> "Selesai"
+        CANCELLED -> "Dibatalkan"
+        else -> status
+    }
+}
+
 data class Session(
-    val id: String = "SEIV" + (10000..99999).random(),
+    val id: String = "SEIV" + (100000..999999).random(),
     val counselorId: String,
     val dateMillis: Long,
     val time: String,
@@ -49,11 +64,13 @@ data class Session(
     val paymentMethod: String,
     val total: Int,
     val createdAt: Long = System.currentTimeMillis(),
+    val status: String = SessionStatus.CONFIRMED,
+    val counselorNote: String = "",
 )
 
 /**
- * Penyimpanan lokal sederhana (SharedPreferences + JSON).
- * Semua data pengguna tersimpan di perangkat saja.
+ * Penyimpanan lokal (SharedPreferences + JSON) sekaligus cache untuk data Supabase.
+ * UI selalu membaca dari sini; [com.seiv.app.data.remote.SeivSync] menyinkronkannya dengan server.
  */
 object SeivStore {
     private lateinit var prefs: SharedPreferences
@@ -66,6 +83,10 @@ object SeivStore {
     val journals = mutableStateListOf<JournalEntry>()
     val screenings = mutableStateListOf<ScreeningResult>()
     val sessions = mutableStateListOf<Session>()
+    val counselors = mutableStateListOf<Counselor>().apply { addAll(COUNSELORS) }
+
+    /** Item yang belum berhasil dikirim ke server, format "tabel:id". */
+    private val pending = mutableSetOf<String>()
 
     fun init(context: Context) {
         if (::prefs.isInitialized) return
@@ -75,13 +96,8 @@ object SeivStore {
             val o = JSONObject(it)
             user = User(o.getString("name"), o.getString("email"))
         }
-        checkIns.addAll(readArray("checkins") { o ->
-            CheckIn(
-                o.getString("id"), o.getLong("ts"), o.getInt("mood"),
-                o.getJSONArray("factors").toStrings(), o.getJSONArray("feelings").toStrings(),
-                o.optString("note"),
-            )
-        })
+        pending.addAll(prefs.getStringSet("pending", emptySet()).orEmpty())
+        checkIns.addAll(readArray("checkins", ::checkInFromJson))
         journals.addAll(readArray("journals") { o ->
             JournalEntry(o.getString("id"), o.getLong("ts"), o.optString("prompt"), o.getString("text"))
         })
@@ -93,9 +109,13 @@ object SeivStore {
                 o.getString("id"), o.getString("counselor"), o.getLong("date"), o.getString("time"),
                 o.getString("method"), o.optString("note"), o.optBoolean("share"),
                 o.getString("pay"), o.getInt("total"), o.getLong("created"),
+                o.optString("status", SessionStatus.CONFIRMED), o.optString("cnote"),
             )
         })
+        readArray("counselors", ::counselorFromJson).takeIf { it.isNotEmpty() }?.let { setCounselors(it, persist = false) }
     }
+
+    // ------------------------------------------------------------ akun
 
     fun finishOnboarding() {
         onboarded = true
@@ -107,9 +127,13 @@ object SeivStore {
         prefs.edit().putString("user", JSONObject().put("name", name).put("email", email).toString()).apply()
     }
 
-    fun logout() {
+    fun logout(clearData: Boolean) {
         user = null
         prefs.edit().remove("user").apply()
+        if (clearData) {
+            checkIns.clear(); journals.clear(); screenings.clear(); sessions.clear(); pending.clear()
+            prefs.edit().remove("checkins").remove("journals").remove("screenings").remove("sessions").remove("pending").apply()
+        }
     }
 
     fun updateName(name: String) {
@@ -117,35 +141,56 @@ object SeivStore {
         login(name, u.email)
     }
 
-    fun addCheckIn(c: CheckIn) {
-        checkIns.add(0, c); saveCheckIns()
+    // ------------------------------------------------------------ tulis lokal
+
+    fun addCheckIn(c: CheckIn) { checkIns.add(0, c); saveCheckIns() }
+    fun addJournal(j: JournalEntry) { journals.add(0, j); saveJournals() }
+    fun deleteJournal(id: String) { journals.removeAll { it.id == id }; saveJournals() }
+    fun addScreening(s: ScreeningResult) { screenings.add(0, s); saveScreenings() }
+    fun addSession(s: Session) { sessions.add(0, s); saveSessions() }
+
+    fun updateSession(s: Session) {
+        val i = sessions.indexOfFirst { it.id == s.id }
+        if (i >= 0) { sessions[i] = s; saveSessions() }
     }
 
-    fun addJournal(j: JournalEntry) {
-        journals.add(0, j); saveJournals()
+    fun counselorById(id: String): Counselor = counselors.firstOrNull { it.id == id }
+        ?: COUNSELORS.firstOrNull { it.id == id } ?: counselors.first()
+
+    fun setCounselors(list: List<Counselor>, persist: Boolean = true) {
+        if (list.isEmpty()) return
+        counselors.clear(); counselors.addAll(list)
+        if (persist) writeArray("counselors", list, ::counselorToJson)
     }
 
-    fun deleteJournal(id: String) {
-        journals.removeAll { it.id == id }; saveJournals()
-    }
+    // ------------------------------------------------------------ data dari server
 
-    fun addScreening(s: ScreeningResult) {
-        screenings.add(0, s)
-        writeArray("screenings", screenings) {
-            JSONObject().put("id", it.id).put("ts", it.timestamp).put("srq", it.srq)
-                .put("gad", it.gad).put("phq", it.phq).put("phq9", it.phqItem9)
+    fun replaceRemote(
+        remoteCheckIns: List<CheckIn>, remoteJournals: List<JournalEntry>,
+        remoteScreenings: List<ScreeningResult>, remoteSessions: List<Session>,
+    ) {
+        fun <T> merge(local: List<T>, remote: List<T>, table: String, id: (T) -> String, ts: (T) -> Long): List<T> {
+            val keepLocal = local.filter { "$table:${id(it)}" in pending && remote.none { r -> id(r) == id(it) } }
+            return (remote + keepLocal).sortedByDescending(ts)
         }
+        val ci = merge(checkIns, remoteCheckIns, "check_ins", { it.id }, { it.timestamp })
+        val jo = merge(journals, remoteJournals, "journals", { it.id }, { it.timestamp })
+        val sc = merge(screenings, remoteScreenings, "screenings", { it.id }, { it.timestamp })
+        val se = merge(sessions, remoteSessions, "sessions", { it.id }, { it.createdAt })
+        checkIns.clear(); checkIns.addAll(ci); saveCheckIns()
+        journals.clear(); journals.addAll(jo); saveJournals()
+        screenings.clear(); screenings.addAll(sc); saveScreenings()
+        sessions.clear(); sessions.addAll(se); saveSessions()
     }
 
-    fun addSession(s: Session) {
-        sessions.add(0, s)
-        writeArray("sessions", sessions) {
-            JSONObject().put("id", it.id).put("counselor", it.counselorId).put("date", it.dateMillis)
-                .put("time", it.time).put("method", it.method).put("note", it.note)
-                .put("share", it.shareCheckIn).put("pay", it.paymentMethod).put("total", it.total)
-                .put("created", it.createdAt)
-        }
-    }
+    // ------------------------------------------------------------ antrean sinkron
+
+    fun markPending(key: String) { pending.add(key); savePending() }
+    fun clearPending(key: String) { pending.remove(key); savePending() }
+    fun pendingKeys(): List<String> = pending.toList()
+    private fun savePending() = prefs.edit().putStringSet("pending", pending.toSet()).apply()
+
+    // ------------------------------------------------------------ kueri
 
     fun todayCheckIn(): CheckIn? = checkIns.firstOrNull { isSameDay(it.timestamp, System.currentTimeMillis()) }
 
@@ -162,14 +207,42 @@ object SeivStore {
         return count
     }
 
+    // ------------------------------------------------------------ serialisasi
+
     private fun saveCheckIns() = writeArray("checkins", checkIns) {
         JSONObject().put("id", it.id).put("ts", it.timestamp).put("mood", it.mood)
             .put("factors", JSONArray(it.factors)).put("feelings", JSONArray(it.feelings)).put("note", it.note)
     }
 
+    private fun checkInFromJson(o: JSONObject) = CheckIn(
+        o.getString("id"), o.getLong("ts"), o.getInt("mood"),
+        o.getJSONArray("factors").toStrings(), o.getJSONArray("feelings").toStrings(), o.optString("note"),
+    )
+
     private fun saveJournals() = writeArray("journals", journals) {
         JSONObject().put("id", it.id).put("ts", it.timestamp).put("prompt", it.prompt).put("text", it.text)
     }
+
+    private fun saveScreenings() = writeArray("screenings", screenings) {
+        JSONObject().put("id", it.id).put("ts", it.timestamp).put("srq", it.srq)
+            .put("gad", it.gad).put("phq", it.phq).put("phq9", it.phqItem9)
+    }
+
+    private fun saveSessions() = writeArray("sessions", sessions) {
+        JSONObject().put("id", it.id).put("counselor", it.counselorId).put("date", it.dateMillis)
+            .put("time", it.time).put("method", it.method).put("note", it.note)
+            .put("share", it.shareCheckIn).put("pay", it.paymentMethod).put("total", it.total)
+            .put("created", it.createdAt).put("status", it.status).put("cnote", it.counselorNote)
+    }
+
+    private fun counselorToJson(c: Counselor) = JSONObject().put("id", c.id).put("name", c.name).put("role", c.role)
+        .put("rating", c.rating).put("reviews", c.reviews).put("tags", JSONArray(c.tags)).put("bio", c.bio)
+        .put("price", c.price).put("initials", c.initials).put("color", c.colorIndex)
+
+    private fun counselorFromJson(o: JSONObject) = Counselor(
+        o.getString("id"), o.getString("name"), o.getString("role"), o.getDouble("rating"), o.getInt("reviews"),
+        o.getJSONArray("tags").toStrings(), o.optString("bio"), o.getInt("price"), o.optString("initials"), o.optInt("color"),
+    )
 
     private fun <T> writeArray(key: String, list: List<T>, map: (T) -> JSONObject) {
         val arr = JSONArray()
@@ -184,9 +257,9 @@ object SeivStore {
             (0 until arr.length()).map { map(arr.getJSONObject(it)) }
         }.getOrDefault(emptyList())
     }
-
-    private fun JSONArray.toStrings() = (0 until length()).map { getString(it) }
 }
+
+fun JSONArray.toStrings() = (0 until length()).map { getString(it) }
 
 fun dayKey(ts: Long): Int {
     val c = Calendar.getInstance().apply { timeInMillis = ts }

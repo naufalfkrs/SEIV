@@ -39,6 +39,7 @@ import com.seiv.app.data.FEELINGS
 import com.seiv.app.data.MOODS
 import com.seiv.app.data.SeivStore
 import com.seiv.app.data.buildInsight
+import com.seiv.app.data.remote.SeivSync
 import com.seiv.app.ui.Routes
 import com.seiv.app.ui.components.BackCircle
 import com.seiv.app.ui.components.Chip
@@ -150,7 +151,7 @@ fun CheckInScreen(nav: NavHostController, initialMood: Int?) {
             enabled = mood != null,
             onClick = {
                 val c = CheckIn(mood = mood!!, factors = factors.toList(), feelings = feelings.toList(), note = note.trim())
-                SeivStore.addCheckIn(c)
+                SeivSync.addCheckIn(c)
                 nav.navigate("${Routes.INSIGHT}/${c.id}") { popUpTo(Routes.HOME) }
             },
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),

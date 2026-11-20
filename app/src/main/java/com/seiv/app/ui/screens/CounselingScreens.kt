@@ -52,9 +52,11 @@ import com.seiv.app.data.Counselor
 import com.seiv.app.data.PLATFORM_FEE
 import com.seiv.app.data.SeivStore
 import com.seiv.app.data.Session
+import com.seiv.app.data.SessionStatus
 import com.seiv.app.data.counselorById
 import com.seiv.app.data.isSameDay
 import com.seiv.app.data.rupiah
+import com.seiv.app.data.remote.SeivSync
 import com.seiv.app.ui.Routes
 import com.seiv.app.ui.components.*
 import com.seiv.app.ui.goTab
@@ -104,10 +106,12 @@ fun methodIcon(method: String): ImageVector = when (method) {
 
 @Composable
 fun CounselingScreen(nav: NavHostController) {
+    LaunchedEffect(Unit) { SeivSync.refreshInBackground() } // ambil status sesi terbaru dari server
     val now = System.currentTimeMillis()
-    val upcoming = SeivStore.sessions.filter { sessionStartMillis(it.dateMillis, it.time) + SESSION_MINUTES * 60_000 > now }
+    val active = SeivStore.sessions.filter { it.status != SessionStatus.CANCELLED }
+    val upcoming = active.filter { it.status != SessionStatus.COMPLETED && sessionStartMillis(it.dateMillis, it.time) + SESSION_MINUTES * 60_000 > now }
         .sortedBy { sessionStartMillis(it.dateMillis, it.time) }
-    val done = SeivStore.sessions.size - upcoming.size
+    val done = active.size - upcoming.size
 
     Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = 28.dp)) {
         GreetingHeader(nav, showCompanion = false)
@@ -219,6 +223,8 @@ fun SessionRow(s: Session, modifier: Modifier = Modifier, onClick: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(c.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Seiv.Text)
                 Text("${formatDate(s.dateMillis, "EEE, d MMM")} · ${s.time} WIB", fontSize = 11.sp, color = Seiv.TextSecondary)
+                Spacer(Modifier.height(4.dp))
+                StatusTag(s.status)
             }
             Row(
                 Modifier.clip(RoundedCornerShape(10.dp)).background(Seiv.MintLight).padding(horizontal = 8.dp, vertical = 5.dp),
@@ -230,6 +236,17 @@ fun SessionRow(s: Session, modifier: Modifier = Modifier, onClick: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+fun StatusTag(status: String) {
+    val (fg, bg) = when (status) {
+        SessionStatus.WAITING -> Seiv.Orange to Seiv.OrangeSoft
+        SessionStatus.CANCELLED -> Seiv.Red to Seiv.RedSoft
+        SessionStatus.COMPLETED -> Seiv.Purple to Seiv.PurpleSoft
+        else -> Seiv.PrimaryDark to Seiv.MintLight
+    }
+    Tag(SessionStatus.label(status), fg, bg)
 }
 
 @Composable
@@ -263,7 +280,8 @@ fun EmptyState(emoji: String, title: String, desc: String) {
 
 @Composable
 fun CounselorListScreen(nav: NavHostController, role: String?) {
-    val list = COUNSELORS.filter { role == null || it.role.contains(role, ignoreCase = true) }
+    LaunchedEffect(Unit) { SeivSync.refreshInBackground() }
+    val list = SeivStore.counselors.filter { role == null || it.role.contains(role, ignoreCase = true) }
     Column(Modifier.fillMaxSize().background(Seiv.Background).statusBarsPadding().navigationBarsPadding()) {
         ScreenHeader("Pilih Konselor", onBack = { nav.popBackStack() }, subtitle = "Pilih yang paling sesuai untukmu") {
             Text("🌿", fontSize = 22.sp)
@@ -349,8 +367,12 @@ fun ScheduleScreen(nav: NavHostController, counselorId: String) {
     var note by remember { mutableStateOf("") }
     var share by remember { mutableStateOf(false) }
     val now = System.currentTimeMillis()
-    // Slot tertentu "terisi" agar terasa realistis
-    val booked = remember(date, counselorId) { TIME_SLOTS.filterIndexed { i, _ -> (i + date / 86_400_000L + counselorId.length) % 4 == 0L } }
+    // Online: slot terisi diambil dari server. Offline (demo): beberapa slot dibuat "terisi" agar terasa realistis.
+    var booked by remember { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(date, counselorId) {
+        booked = if (SeivSync.online) SeivSync.bookedSlots(counselorId, date)
+        else TIME_SLOTS.filterIndexed { i, _ -> (i + date / 86_400_000L + counselorId.length) % 4 == 0L }.toSet()
+    }
 
     Column(Modifier.fillMaxSize().background(Seiv.Background).statusBarsPadding().navigationBarsPadding().imePadding()) {
         ScreenHeader("Jadwalkan Sesi", onBack = { nav.popBackStack() }, subtitle = "bersama ${c.name}")
@@ -579,18 +601,33 @@ fun PaymentDetailScreen(nav: NavHostController) {
     val orderSeed = remember { Random.nextLong() }
     var remaining by remember { mutableIntStateOf(15 * 60) }
     var checking by remember { mutableStateOf(false) }
+    var payError by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { while (remaining > 0) { delay(1000); remaining-- } }
     LaunchedEffect(checking) {
         if (checking) {
-            delay(1500)
-            val s = Session(
+            delay(800)
+            val draft = Session(
                 counselorId = BookingDraft.counselorId, dateMillis = BookingDraft.dateMillis, time = BookingDraft.time,
                 method = BookingDraft.method, note = BookingDraft.note, shareCheckIn = BookingDraft.shareCheckIn,
                 paymentMethod = if (method == "QRIS") "QRIS" else "$method VA", total = total,
             )
-            SeivStore.addSession(s)
-            nav.navigate("${Routes.PAY_SUCCESS}/${s.id}") { popUpTo(Routes.COUNSELING) }
+            try {
+                val s = SeivSync.bookSession(draft)
+                nav.navigate("${Routes.PAY_SUCCESS}/${s.id}") { popUpTo(Routes.COUNSELING) }
+            } catch (e: Exception) {
+                payError = e.message ?: "Gagal menyimpan pesanan."
+                checking = false
+            }
         }
+    }
+    payError?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { payError = null },
+            confirmButton = { TextButton({ payError = null }) { Text("OK", color = Seiv.Primary) } },
+            title = { Text("Pesanan belum tersimpan") },
+            text = { Text(msg, fontSize = 13.sp) },
+            containerColor = Color.White,
+        )
     }
     val vaNumber = remember { (if (method == "BCA") "39012" else "88908") + (100000000L + (orderSeed and 0x7FFFFFF) % 900000000L) }
 
@@ -727,9 +764,10 @@ fun PaymentSuccessScreen(nav: NavHostController, id: String) {
                     contentAlignment = Alignment.Center,
                 ) { Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(36.dp)) }
             }
-            Text("Pembayaran Berhasil! 🎉", style = MaterialTheme.typography.headlineMedium.copy(fontSize = 22.sp))
+            val waiting = s.status == SessionStatus.WAITING
+            Text(if (waiting) "Pembayaran Terkirim! 🎉" else "Pembayaran Berhasil! 🎉", style = MaterialTheme.typography.headlineMedium.copy(fontSize = 22.sp))
             Spacer(Modifier.height(6.dp))
-            Text("Sesi konseling kamu sudah terkonfirmasi. Sampai jumpa!", fontSize = 12.sp, color = Seiv.TextSecondary, textAlign = TextAlign.Center)
+            Text(if (waiting) "Admin SEIV akan memverifikasi pembayaranmu. Status sesi bisa dipantau di menu Konseling." else "Sesi konseling kamu sudah terkonfirmasi. Sampai jumpa!", fontSize = 12.sp, color = Seiv.TextSecondary, textAlign = TextAlign.Center)
             Spacer(Modifier.height(18.dp))
             SeivCard(Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -737,7 +775,7 @@ fun PaymentSuccessScreen(nav: NavHostController, id: String) {
                         Text("ID TRANSAKSI", fontSize = 9.sp, letterSpacing = 1.sp, color = Seiv.TextHint)
                         Text("#${s.id}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Seiv.Text)
                     }
-                    Tag("✓ Lunas")
+                    if (s.status == SessionStatus.WAITING) StatusTag(s.status) else Tag("✓ Lunas")
                 }
                 Spacer(Modifier.height(12.dp))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Seiv.Border))
@@ -826,7 +864,8 @@ fun SessionDetailScreen(nav: NavHostController, id: String) {
                 DetailRow(Icons.Outlined.CalendarMonth, "Tanggal", formatDate(s.dateMillis, "EEEE, d MMMM yyyy"))
                 DetailRow(Icons.Outlined.Schedule, "Waktu & Durasi", "${s.time} – ${endTime(s.time)} WIB ($SESSION_MINUTES menit)")
                 DetailRow(methodIcon(s.method), "Metode Sesi", s.method, s.method)
-                DetailRow(Icons.Outlined.Payments, "Biaya Sesi", rupiah(s.total), "Lunas")
+                DetailRow(Icons.Outlined.Payments, "Biaya Sesi", rupiah(s.total), if (s.status == SessionStatus.WAITING) "Diverifikasi" else "Lunas")
+                DetailRow(Icons.Outlined.Info, "Status", SessionStatus.label(s.status))
                 DetailRow(Icons.Outlined.Language, "Platform", "SEIV App — Sesi ${s.method.lowercase()} terenkripsi")
             }
             Spacer(Modifier.height(12.dp))
@@ -834,7 +873,10 @@ fun SessionDetailScreen(nav: NavHostController, id: String) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Catatan untuk Konselor", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Seiv.Text, modifier = Modifier.weight(1f))
                     Text(if (editing) "Simpan" else "Edit ›", fontSize = 11.sp, color = Seiv.Primary, fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.clickable { editing = !editing })
+                        modifier = Modifier.clickable {
+                            if (editing) SeivSync.updateSessionPrefs(s.copy(note = note.trim()))
+                            editing = !editing
+                        })
                 }
                 Spacer(Modifier.height(8.dp))
                 if (editing) {
@@ -854,27 +896,37 @@ fun SessionDetailScreen(nav: NavHostController, id: String) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.Insights, null, tint = Seiv.Orange, modifier = Modifier.size(14.dp))
                     Text(" Data check-in dibagikan", fontSize = 11.sp, color = Seiv.TextSecondary, modifier = Modifier.weight(1f))
-                    Switch(share, { share = it }, colors = SwitchDefaults.colors(checkedTrackColor = Seiv.Primary))
+                    Switch(share, { share = it; SeivSync.updateSessionPrefs(s.copy(shareCheckIn = it, note = note)) }, colors = SwitchDefaults.colors(checkedTrackColor = Seiv.Primary))
+                }
+            }
+            if (s.counselorNote.isNotBlank()) {
+                Spacer(Modifier.height(12.dp))
+                SeivCard(Modifier.fillMaxWidth(), color = Seiv.MintSoft) {
+                    Text("Pesan dari konselor", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Seiv.PrimaryDark)
+                    Spacer(Modifier.height(6.dp))
+                    Text(s.counselorNote, fontSize = 12.sp, color = Seiv.Text, lineHeight = 18.sp)
                 }
             }
             Spacer(Modifier.height(16.dp))
         }
         PrimaryButton(
             if (now >= end) "Sesi telah selesai" else "Masuk ke Sesi", icon = methodIcon(s.method), container = Seiv.PrimaryDark,
-            enabled = now < end,
+            enabled = now < end && s.status != SessionStatus.CANCELLED && s.status != SessionStatus.COMPLETED,
             onClick = { showJoin = true },
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
         )
     }
     if (showJoin) {
-        val open = now >= start - 10 * 60_000
+        val verified = s.status == SessionStatus.CONFIRMED
+        val open = verified && now >= start - 10 * 60_000
         AlertDialog(
             onDismissRequest = { showJoin = false },
             confirmButton = { TextButton({ showJoin = false }) { Text("Mengerti", color = Seiv.Primary) } },
-            title = { Text(if (open) "Menghubungkan..." else "Ruang sesi belum dibuka") },
+            title = { Text(if (open) "Menghubungkan..." else if (!verified) "Menunggu verifikasi" else "Ruang sesi belum dibuka") },
             text = {
                 Text(
-                    if (open) "Kamu akan terhubung dengan ${c.name} melalui ${s.method}. Pastikan kamu berada di tempat yang nyaman dan tenang."
+                    if (!verified) "Pembayaranmu sedang diverifikasi admin SEIV. Ruang sesi akan terbuka setelah sesi terkonfirmasi."
+                    else if (open) "Kamu akan terhubung dengan ${c.name} melalui ${s.method}. Pastikan kamu berada di tempat yang nyaman dan tenang."
                     else "Ruang sesi akan terbuka 10 menit sebelum jadwal (${s.time} WIB). Kami akan mengingatkanmu.",
                     fontSize = 13.sp,
                 )

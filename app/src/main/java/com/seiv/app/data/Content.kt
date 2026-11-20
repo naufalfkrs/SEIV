@@ -241,7 +241,7 @@ val COUNSELORS = listOf(
         "Fokus pada produktivitas, motivasi, dan pengembangan diri.", 175_000, "FR", 2),
 )
 
-fun counselorById(id: String) = COUNSELORS.firstOrNull { it.id == id } ?: COUNSELORS.first()
+fun counselorById(id: String) = SeivStore.counselorById(id)
 
 const val PLATFORM_FEE = 5_000
 

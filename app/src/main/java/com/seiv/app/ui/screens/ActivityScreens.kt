@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.seiv.app.data.*
+import com.seiv.app.data.remote.SeivSync
 import com.seiv.app.ui.Routes
 import com.seiv.app.ui.components.*
 import com.seiv.app.ui.resetTo
@@ -133,7 +134,7 @@ fun ActivityScreen(nav: NavHostController) {
                 onDismissRequest = { toDelete = null },
                 title = { Text("Hapus jurnal?") },
                 text = { Text("Tulisan ini akan dihapus permanen dari perangkatmu.", fontSize = 13.sp) },
-                confirmButton = { TextButton({ SeivStore.deleteJournal(j.id); toDelete = null }) { Text("Hapus", color = Seiv.Red) } },
+                confirmButton = { TextButton({ SeivSync.deleteJournal(j.id); toDelete = null }) { Text("Hapus", color = Seiv.Red) } },
                 dismissButton = { TextButton({ toDelete = null }) { Text("Batal", color = Seiv.Primary) } },
                 containerColor = Color.White,
             )
@@ -217,7 +218,7 @@ fun JournalEditorScreen(nav: NavHostController, initialPrompt: String?) {
         PrimaryButton(
             "Simpan Jurnal", enabled = text.isNotBlank(),
             onClick = {
-                SeivStore.addJournal(JournalEntry(prompt = prompt, text = text.trim()))
+                SeivSync.addJournal(JournalEntry(prompt = prompt, text = text.trim()))
                 Toast.makeText(ctx, "Jurnal tersimpan 🌿", Toast.LENGTH_SHORT).show()
                 nav.popBackStack()
             },
@@ -431,7 +432,7 @@ fun ProfileScreen(nav: NavHostController) {
             onDismissRequest = { editName = false },
             title = { Text("Ubah nama panggilan") },
             text = { OutlinedTextField(name, { name = it }, singleLine = true, shape = RoundedCornerShape(12.dp)) },
-            confirmButton = { TextButton({ if (name.isNotBlank()) SeivStore.updateName(name.trim()); editName = false }) { Text("Simpan", color = Seiv.Primary) } },
+            confirmButton = { TextButton({ if (name.isNotBlank()) SeivSync.updateName(name.trim()); editName = false }) { Text("Simpan", color = Seiv.Primary) } },
             dismissButton = { TextButton({ editName = false }) { Text("Batal", color = Seiv.TextSecondary) } },
             containerColor = Color.White,
         )
@@ -441,7 +442,7 @@ fun ProfileScreen(nav: NavHostController) {
             onDismissRequest = { confirmLogout = false },
             title = { Text("Keluar dari SEIV?") },
             text = { Text("Data check-in dan jurnalmu tetap tersimpan di perangkat ini.", fontSize = 13.sp) },
-            confirmButton = { TextButton({ confirmLogout = false; SeivStore.logout(); nav.resetTo(Routes.LOGIN) }) { Text("Keluar", color = Seiv.Red) } },
+            confirmButton = { TextButton({ confirmLogout = false; SeivSync.signOut(); nav.resetTo(Routes.LOGIN) }) { Text("Keluar", color = Seiv.Red) } },
             dismissButton = { TextButton({ confirmLogout = false }) { Text("Batal", color = Seiv.Primary) } },
             containerColor = Color.White,
         )

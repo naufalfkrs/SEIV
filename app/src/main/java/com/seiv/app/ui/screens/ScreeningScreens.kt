@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.seiv.app.data.*
+import com.seiv.app.data.remote.SeivSync
 import com.seiv.app.ui.Routes
 import com.seiv.app.ui.components.*
 import com.seiv.app.ui.goTab
@@ -168,7 +169,7 @@ fun ScreeningRunScreen(nav: NavHostController) {
         val gad = answers[1].sumOf { it ?: 0 }
         val phq = answers[2].sumOf { it ?: 0 }
         val r = ScreeningResult(srq = srq, gad = gad, phq = phq, phqItem9 = answers[2].last() ?: 0)
-        SeivStore.addScreening(r)
+        SeivSync.addScreening(r)
         nav.navigate("${Routes.SCREENING_RESULT}/${r.id}") { popUpTo(Routes.SCREENING) }
     }
 

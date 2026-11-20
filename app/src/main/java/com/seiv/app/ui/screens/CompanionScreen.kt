@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.seiv.app.data.ChatMessage
 import com.seiv.app.data.CompanionEngine
+import com.seiv.app.data.remote.SeivSync
 import com.seiv.app.ui.Routes
 import com.seiv.app.ui.goTab
 import com.seiv.app.ui.theme.Seiv
@@ -71,8 +72,15 @@ fun CompanionScreen(nav: NavHostController) {
         typing = true
         val turn = CompanionSession.userTurns++
         scope.launch {
-            delay(900L + (t.length * 8L).coerceAtMost(900L))
-            messages.add(CompanionEngine.reply(t, turn))
+            val local = CompanionEngine.reply(t, turn)
+            val reply = if (local.isCrisis) {
+                // Kata kunci krisis: tampilkan bantuan darurat seketika, tanpa menunggu AI
+                delay(400); local
+            } else {
+                SeivSync.companionReply(messages.toList(), name)?.let { ChatMessage(false, it) }
+                    ?: run { delay(900L + (t.length * 8L).coerceAtMost(900L)); local } // offline / server gagal
+            }
+            messages.add(reply)
             typing = false
         }
     }

@@ -46,6 +46,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.seiv.app.data.SeivStore
+import com.seiv.app.data.remote.SeivSync
+import com.seiv.app.data.remote.SupabaseApi
 import com.seiv.app.ui.screens.*
 import com.seiv.app.ui.theme.Seiv
 
@@ -111,6 +113,8 @@ fun SeivApp() {
                 val next = when {
                     !SeivStore.onboarded -> Routes.ONBOARDING
                     SeivStore.user == null -> Routes.LOGIN
+                    // Backend aktif tapi sesi login sudah tidak ada (mis. baru dikonfigurasi)
+                    SeivSync.online && !SupabaseApi.hasSession -> Routes.LOGIN
                     else -> Routes.HOME
                 }
                 nav.resetTo(next)

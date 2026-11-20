@@ -58,6 +58,9 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.seiv.app.data.SeivStore
+import com.seiv.app.data.remote.GoogleAuth
+import com.seiv.app.data.remote.SeivSync
+import kotlinx.coroutines.launch
 import com.seiv.app.ui.components.BackCircle
 import com.seiv.app.ui.components.PrimaryButton
 import com.seiv.app.ui.theme.Seiv
@@ -338,12 +341,24 @@ private fun nameFromEmail(email: String): String =
     email.substringBefore("@").split('.', '_', '-').filter { it.isNotBlank() }
         .joinToString(" ") { s -> s.replaceFirstChar { it.uppercase() } }.ifBlank { "Sahabat" }
 
+
+private fun isEmail(s: String) = android.util.Patterns.EMAIL_ADDRESS.matcher(s.trim()).matches()
+
 @Composable
 fun LoginScreen(onLoggedIn: () -> Unit, onRegister: () -> Unit) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     var email by remember { mutableStateOf("") }
     var pass by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(false) }
+
+    fun run(block: suspend () -> Unit) {
+        loading = true; error = null
+        scope.launch {
+            try { block() } catch (e: Exception) { error = e.message ?: "Terjadi kesalahan." } finally { loading = false }
+        }
+    }
 
     AuthBackground {
         Spacer(Modifier.height(40.dp))
@@ -354,8 +369,16 @@ fun LoginScreen(onLoggedIn: () -> Unit, onRegister: () -> Unit) {
         Text("Ruang aman untukmu bercerita.", fontSize = 13.sp, color = Seiv.TextSecondary)
         Spacer(Modifier.height(28.dp))
         GoogleButton {
-            SeivStore.login("Sahabat SEIV", "pengguna@gmail.com")
-            onLoggedIn()
+            when {
+                loading -> Unit
+                GoogleAuth.isConfigured -> run {
+                    val token = GoogleAuth.requestIdToken(ctx) ?: return@run
+                    SeivSync.signInWithGoogle(token)
+                    onLoggedIn()
+                }
+                SeivSync.online -> error = "Login Google belum diaktifkan. Gunakan email untuk sementara."
+                else -> { SeivStore.login("Sahabat SEIV", "pengguna@gmail.com"); onLoggedIn() } // mode offline/demo
+            }
         }
         Row(Modifier.padding(vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f).height(1.dp).background(Color(0xFFD5DBEA)))
@@ -366,17 +389,18 @@ fun LoginScreen(onLoggedIn: () -> Unit, onRegister: () -> Unit) {
         Spacer(Modifier.height(14.dp))
         LabeledField(
             "Kata sandi", pass, { pass = it; error = null }, "••••••••", Icons.Outlined.Lock, password = true,
-            trailingLabel = "Lupa?", onTrailing = { Toast.makeText(ctx, "Tautan reset kata sandi akan dikirim ke emailmu.", Toast.LENGTH_SHORT).show() },
+            trailingLabel = "Lupa?", onTrailing = { Toast.makeText(ctx, "Hubungi admin SEIV untuk mengatur ulang kata sandi.", Toast.LENGTH_SHORT).show() },
         )
         if (error != null) {
             Spacer(Modifier.height(8.dp))
             Text(error!!, color = Seiv.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth())
         }
         Spacer(Modifier.height(22.dp))
-        PrimaryButton("Masuk", onClick = {
+        PrimaryButton(if (loading) "Memproses..." else "Masuk", enabled = !loading, onClick = {
             when {
-                !android.util.Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches() -> error = "Masukkan email yang valid."
+                !isEmail(email) -> error = "Masukkan email yang valid."
                 pass.length < 6 -> error = "Kata sandi minimal 6 karakter."
+                SeivSync.online -> run { SeivSync.signIn(email.trim(), pass); onLoggedIn() }
                 else -> {
                     val existing = SeivStore.user
                     val name = if (existing != null && existing.email == email.trim()) existing.name else nameFromEmail(email.trim())
@@ -389,17 +413,24 @@ fun LoginScreen(onLoggedIn: () -> Unit, onRegister: () -> Unit) {
             Text("Belum punya akun? ", fontSize = 12.sp, color = Seiv.TextSecondary)
             Text("Daftar sekarang", fontSize = 12.sp, color = Seiv.Text, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onRegister))
         }
+        if (!SeivSync.online) {
+            Spacer(Modifier.height(8.dp))
+            Text("Mode offline · data tersimpan di perangkat ini", fontSize = 10.sp, color = Seiv.TextHint)
+        }
         PrivacyFooter()
     }
 }
 
 @Composable
 fun RegisterScreen(onBack: () -> Unit, onRegistered: () -> Unit) {
+    val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var pass by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var info by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(false) }
 
     AuthBackground {
         Row(Modifier.fillMaxWidth().padding(top = 12.dp)) { BackCircle(onBack) }
@@ -421,13 +452,29 @@ fun RegisterScreen(onBack: () -> Unit, onRegistered: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             Text(error!!, color = Seiv.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth())
         }
+        if (info != null) {
+            Spacer(Modifier.height(8.dp))
+            Text(info!!, color = Seiv.PrimaryDark, fontSize = 12.sp, modifier = Modifier.fillMaxWidth())
+        }
         Spacer(Modifier.height(22.dp))
-        PrimaryButton("Daftar", onClick = {
+        PrimaryButton(if (loading) "Memproses..." else "Daftar", enabled = !loading, onClick = {
+            info = null
             when {
                 name.isBlank() -> error = "Nama tidak boleh kosong."
-                !android.util.Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches() -> error = "Masukkan email yang valid."
+                !isEmail(email) -> error = "Masukkan email yang valid."
                 pass.length < 6 -> error = "Kata sandi minimal 6 karakter."
                 pass != confirm -> error = "Kata sandi tidak sama."
+                SeivSync.online -> {
+                    loading = true; error = null
+                    scope.launch {
+                        try {
+                            if (SeivSync.signUp(name.trim(), email.trim(), pass)) onRegistered()
+                            else info = "Akun dibuat! Cek emailmu untuk verifikasi, lalu masuk."
+                        } catch (e: Exception) {
+                            error = e.message ?: "Terjadi kesalahan."
+                        } finally { loading = false }
+                    }
+                }
                 else -> { SeivStore.login(name.trim(), email.trim()); onRegistered() }
             }
         })
