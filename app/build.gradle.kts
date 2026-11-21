@@ -21,8 +21,8 @@ android {
         applicationId = "com.seiv.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.1.1"
 
         buildConfigField("String", "SUPABASE_URL", "\"${localProp("SUPABASE_URL").trimEnd('/')}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${localProp("SUPABASE_ANON_KEY")}\"")

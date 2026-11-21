@@ -864,7 +864,11 @@ fun SessionDetailScreen(nav: NavHostController, id: String) {
                 DetailRow(Icons.Outlined.CalendarMonth, "Tanggal", formatDate(s.dateMillis, "EEEE, d MMMM yyyy"))
                 DetailRow(Icons.Outlined.Schedule, "Waktu & Durasi", "${s.time} – ${endTime(s.time)} WIB ($SESSION_MINUTES menit)")
                 DetailRow(methodIcon(s.method), "Metode Sesi", s.method, s.method)
-                DetailRow(Icons.Outlined.Payments, "Biaya Sesi", rupiah(s.total), if (s.status == SessionStatus.WAITING) "Diverifikasi" else "Lunas")
+                DetailRow(Icons.Outlined.Payments, "Biaya Sesi", rupiah(s.total), when (s.status) {
+                    SessionStatus.WAITING -> "Menunggu"
+                    SessionStatus.CANCELLED -> "Dibatalkan"
+                    else -> "Lunas"
+                })
                 DetailRow(Icons.Outlined.Info, "Status", SessionStatus.label(s.status))
                 DetailRow(Icons.Outlined.Language, "Platform", "SEIV App — Sesi ${s.method.lowercase()} terenkripsi")
             }

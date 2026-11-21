@@ -108,7 +108,7 @@ fun ActivityScreen(nav: NavHostController) {
         if (SeivStore.journals.isEmpty()) {
             SeivCard(Modifier.padding(horizontal = 20.dp).fillMaxWidth()) {
                 Text("Belum ada jurnal", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Seiv.Text)
-                Text("Tulisanmu hanya tersimpan di perangkat ini dan bersifat pribadi.", fontSize = 11.sp, color = Seiv.TextSecondary)
+                Text(if (SeivSync.online) "Tulisanmu bersifat pribadi — hanya kamu yang bisa membacanya." else "Tulisanmu hanya tersimpan di perangkat ini dan bersifat pribadi.", fontSize = 11.sp, color = Seiv.TextSecondary)
             }
         }
         var toDelete by remember { mutableStateOf<JournalEntry?>(null) }
@@ -212,7 +212,7 @@ fun JournalEditorScreen(nav: NavHostController, initialPrompt: String?) {
                 textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 14.sp, lineHeight = 22.sp),
             )
             Text(
-                "🔒 Jurnalmu hanya tersimpan di perangkat ini.", fontSize = 10.sp, color = Seiv.TextHint,
+                if (SeivSync.online) "🔒 Jurnalmu pribadi — konselor & admin pun tidak bisa membacanya." else "🔒 Jurnalmu hanya tersimpan di perangkat ini.", fontSize = 10.sp, color = Seiv.TextHint,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
         }
