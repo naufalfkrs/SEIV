@@ -79,6 +79,8 @@ object Routes {
     const val BREATHING = "breathing"
     const val REFERRAL = "referral"
     const val HISTORY = "history"
+    const val NOTIFICATIONS = "notifications"
+    const val PROFILE_EDIT = "profile_edit"
 }
 
 val TAB_ROUTES = listOf(Routes.HOME, Routes.ACTIVITY, Routes.COUNSELING, Routes.SCREENING, Routes.PROFILE)
@@ -144,7 +146,11 @@ fun SeivApp() {
             LoginScreen(onLoggedIn = { nav.resetTo(Routes.HOME) }, onRegister = { nav.navigate(Routes.REGISTER) })
         }
         composable(Routes.REGISTER) {
-            RegisterScreen(onBack = { nav.popBackStack() }, onRegistered = { nav.resetTo(Routes.HOME) })
+            // Setelah daftar, minta pengguna melengkapi data diri
+            RegisterScreen(onBack = { nav.popBackStack() }, onRegistered = {
+                nav.resetTo(Routes.HOME)
+                nav.navigate("${Routes.PROFILE_EDIT}?first=true")
+            })
         }
 
         // --- Tab utama ---
@@ -175,6 +181,10 @@ fun SeivApp() {
         composable(Routes.BREATHING) { BreathingScreen(nav) }
         composable(Routes.REFERRAL) { ReferralScreen(nav) }
         composable(Routes.HISTORY) { CheckInHistoryScreen(nav) }
+        composable(Routes.NOTIFICATIONS) { NotificationsScreen(nav) }
+        composable("${Routes.PROFILE_EDIT}?first={first}", arguments = listOf(optionalArg("first"))) {
+            ProfileEditScreen(nav, firstTime = it.arguments?.getString("first") == "true")
+        }
     }
 }
 

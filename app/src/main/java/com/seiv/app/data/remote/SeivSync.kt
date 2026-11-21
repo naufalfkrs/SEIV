@@ -7,6 +7,7 @@ import com.seiv.app.data.ChatMessage
 import com.seiv.app.data.CheckIn
 import com.seiv.app.data.Counselor
 import com.seiv.app.data.JournalEntry
+import com.seiv.app.data.Profile
 import com.seiv.app.data.ScreeningResult
 import com.seiv.app.data.SeivStore
 import com.seiv.app.data.Session
@@ -66,11 +67,22 @@ object SeivSync {
         val previous = SeivStore.user
         if (previous != null && previous.email != email) SeivStore.logout(clearData = true)
         val profile = runCatching {
-            SupabaseApi.select("profiles", "select=name&id=eq.${u.id}").optJSONObject(0)
+            SupabaseApi.select("profiles", "select=$PROFILE_COLUMNS&id=eq.${u.id}").optJSONObject(0)
         }.getOrNull()
         val name = profile?.optString("name").orEmpty().ifBlank { u.name }.ifBlank { email.substringBefore("@") }
-        SeivStore.login(name, email)
+        SeivStore.login(name, email, Profile.fromJson(profile))
         refresh()
+    }
+
+    private const val PROFILE_COLUMNS = "name,full_name,address,occupation,institution,faculty,phone,guardian_phone"
+
+    /** Simpan data diri. Saat online menunggu server agar error validasi bisa ditampilkan. */
+    suspend fun saveProfile(p: Profile) {
+        if (online && SupabaseApi.hasSession) {
+            val id = SupabaseApi.userId ?: throw SupabaseException("Sesi berakhir, silakan masuk lagi.")
+            SupabaseApi.update("profiles", "id=eq.$id", p.toJson())
+        }
+        SeivStore.updateProfile(p)
     }
 
     fun signOut() {
@@ -162,6 +174,9 @@ object SeivSync {
                 SeivStore.setCounselors((0 until rows.length()).map { counselorFromJson(rows.getJSONObject(it)) })
             }
             val uid = SupabaseApi.userId ?: return
+            runCatching {
+                SupabaseApi.select("profiles", "select=$PROFILE_COLUMNS&id=eq.$uid").optJSONObject(0)
+            }.getOrNull()?.let { SeivStore.updateProfile(Profile.fromJson(it)) }
             val ci = SupabaseApi.select("check_ins", "select=*&user_id=eq.$uid&order=created_at.desc&limit=365")
             val jo = SupabaseApi.select("journals", "select=*&user_id=eq.$uid&order=created_at.desc")
             val sc = SupabaseApi.select("screenings", "select=*&user_id=eq.$uid&order=created_at.desc")
@@ -218,12 +233,9 @@ object SeivSync {
     private fun journalFromJson(o: JSONObject) =
         JournalEntry(o.getString("id"), ms(o.getString("created_at")), o.optString("prompt"), o.getString("body"))
 
-    private fun screeningToJson(s: ScreeningResult) = JSONObject().put("id", s.id).put("created_at", iso(s.timestamp))
-        .put("srq", s.srq).put("gad", s.gad).put("phq", s.phq).put("phq_item9", s.phqItem9)
+    private fun screeningToJson(s: ScreeningResult) = s.toJson().put("id", s.id).put("created_at", iso(s.timestamp))
 
-    private fun screeningFromJson(o: JSONObject) = ScreeningResult(
-        o.getString("id"), ms(o.getString("created_at")), o.getInt("srq"), o.getInt("gad"), o.getInt("phq"), o.optInt("phq_item9"),
-    )
+    private fun screeningFromJson(o: JSONObject) = ScreeningResult.fromJson(o.getString("id"), ms(o.getString("created_at")), o)
 
     private val hhmm = DateTimeFormatter.ofPattern("HH:mm")
 

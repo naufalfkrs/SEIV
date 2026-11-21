@@ -72,24 +72,29 @@ fun GreetingHeader(nav: NavHostController, showCompanion: Boolean = true) {
             Text("Hai, ${firstName()}! 👋", style = MaterialTheme.typography.headlineMedium.copy(fontSize = 22.sp))
         }
         if (showCompanion) {
-            Box {
-                Box(
-                    Modifier.size(40.dp).shadow(3.dp, CircleShape).clip(CircleShape).background(Seiv.PrimaryDark)
-                        .clickable { nav.navigate(Routes.COMPANION) },
-                    contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Outlined.AutoAwesome, "AI Companion", tint = Color.White, modifier = Modifier.size(20.dp)) }
-                Box(
-                    Modifier.align(Alignment.TopEnd).size(14.dp).clip(CircleShape).background(Seiv.Orange).border(2.dp, Color.White, CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) { Text("1", color = Color.White, fontSize = 7.sp, fontWeight = FontWeight.Bold) }
-            }
+            Box(
+                Modifier.size(40.dp).shadow(3.dp, CircleShape).clip(CircleShape).background(Seiv.PrimaryDark)
+                    .clickable { nav.navigate(Routes.COMPANION) },
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Outlined.AutoAwesome, "AI Companion", tint = Color.White, modifier = Modifier.size(20.dp)) }
             Spacer(Modifier.width(10.dp))
         }
-        Box(
-            Modifier.size(40.dp).shadow(2.dp, CircleShape).clip(CircleShape).background(Color.White)
-                .clickable { nav.navigate(Routes.HISTORY) },
-            contentAlignment = Alignment.Center,
-        ) { Icon(Icons.Outlined.NotificationsNone, "Notifikasi", tint = Seiv.Text, modifier = Modifier.size(20.dp)) }
+        val unread = unreadNotificationCount()
+        Box {
+            Box(
+                Modifier.size(40.dp).shadow(2.dp, CircleShape).clip(CircleShape).background(Color.White)
+                    .clickable { nav.navigate(Routes.NOTIFICATIONS) },
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Outlined.NotificationsNone, "Notifikasi", tint = Seiv.Text, modifier = Modifier.size(20.dp)) }
+            if (unread > 0) {
+                // Jumlah notifikasi yang belum dibaca
+                Box(
+                    Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-3).dp).defaultMinSize(16.dp, 16.dp).clip(CircleShape)
+                        .background(Seiv.Red).border(1.5.dp, Color.White, CircleShape).padding(horizontal = 3.dp),
+                    contentAlignment = Alignment.Center,
+                ) { Text(if (unread > 9) "9+" else "$unread", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold) }
+            }
+        }
     }
 }
 

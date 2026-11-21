@@ -438,6 +438,11 @@ fun ProfileScreen(nav: NavHostController) {
             }
         }
         Spacer(Modifier.height(20.dp))
+        MenuItem(
+            Icons.Outlined.Badge,
+            if (user?.profile?.isComplete == true) "Data Diri" else "Data Diri  ·  belum lengkap",
+            if (user?.profile?.isComplete == true) Seiv.Text else Seiv.Orange,
+        ) { nav.navigate("${Routes.PROFILE_EDIT}?first=false") }
         MenuItem(Icons.Outlined.History, "Riwayat Check-in") { nav.navigate(Routes.HISTORY) }
         // Tab Skrining menampilkan riwayat skrining + tombol mulai skrining baru
         MenuItem(Icons.Outlined.Psychology, "Riwayat Skrining") { nav.goTab(Routes.SCREENING) }
@@ -448,7 +453,7 @@ fun ProfileScreen(nav: NavHostController) {
         MenuItem(Icons.AutoMirrored.Outlined.Logout, "Keluar", Seiv.Red) { confirmLogout = true }
         Spacer(Modifier.height(16.dp))
         Text(
-            "SEIV v1.1 · Ruang aman untuk kesehatan mental mahasiswa\nMendukung SDGs 3: Kehidupan Sehat dan Sejahtera",
+            "SEIV v1.2 · Ruang aman untuk kesehatan mental mahasiswa\nMendukung SDGs 3: Kehidupan Sehat dan Sejahtera",
             fontSize = 10.sp, color = Seiv.TextHint, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
         )
     }

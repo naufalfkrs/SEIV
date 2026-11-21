@@ -14,6 +14,45 @@ export interface Profile {
   email: string;
   role: Role;
   created_at: string;
+  full_name: string;
+  address: string;
+  occupation: "" | "mahasiswa" | "bekerja" | "lainnya";
+  institution: string;
+  faculty: string;
+  phone: string;
+  guardian_phone: string;
+}
+
+export const OCCUPATION_LABEL: Record<string, string> = {
+  mahasiswa: "Mahasiswa", bekerja: "Bekerja", lainnya: "Lainnya", "": "Belum diisi",
+};
+
+export interface ScreeningRow {
+  created_at: string;
+  srq: number;
+  gad: number;
+  phq: number;
+  phq_item9: number;
+  asq: number | null;
+  asq_acute: boolean | null;
+  asq_attempt: number | null;
+  cape: number | null;
+  cape_frequent: number | null;
+  cdrisc: number | null;
+}
+
+/** Ringkasan skor skrining + tanda risiko (sama dengan logika aplikasi). */
+export function screeningSummary(r: ScreeningRow): { text: string; risk: string | null } {
+  const parts = [`SRQ-20 ${r.srq}`, `PHQ-9 ${r.phq}`, `GAD-7 ${r.gad}`];
+  if (r.asq !== null) parts.push(`ASQ ${r.asq}/4`);
+  if (r.cape !== null) parts.push(`CAPE-15 ${r.cape} (${r.cape_frequent ?? 0} sering)`);
+  if (r.cdrisc !== null) parts.push(`CD-RISC-10 ${r.cdrisc}`);
+  const risks: string[] = [];
+  if (r.asq_acute) risks.push("ASQ positif AKUT (pikiran bunuh diri saat ini)");
+  else if ((r.asq ?? 0) > 0) risks.push("ASQ positif");
+  if (r.asq_attempt === 0) risks.push("percobaan ≤12 bulan terakhir");
+  if (r.phq_item9 > 0) risks.push(`PHQ-9 butir 9 = ${r.phq_item9}`);
+  return { text: parts.join(" · "), risk: risks.length ? risks.join(" · ") : null };
 }
 
 export interface Counselor {

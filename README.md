@@ -1,7 +1,7 @@
 # SEIV — Ruang Aman Kesehatan Mental Mahasiswa
 
 SEIV adalah aplikasi kesehatan mental untuk mahasiswa (SDGs 3). Fiturnya: daily check-in, insight awal, skrining
-tervalidasi (SRQ-20, GAD-7, PHQ-9), rekomendasi tindakan, AI Companion (Ruang Cerita), jurnal refleksi, latihan napas,
+kesehatan jiwa 6 instrumen (SRQ-20, PHQ-9, GAD-7, ASQ, CAPE-15, CD-RISC-10), rekomendasi tindakan, AI Companion (Ruang Cerita), jurnal refleksi, latihan napas,
 konseling dengan nurse counselor/psikolog, serta rujukan bantuan profesional.
 
 | Folder | Isi |
@@ -111,3 +111,27 @@ Untuk produksi: `npm run build` lalu deploy folder `admin/dist` ke Vercel/Netlif
 
 Skema dan kebijakan RLS sudah diuji (32 skenario: isolasi data antar mahasiswa, akses konselor, peran admin,
 bentrok jadwal, dll.) memakai PGlite dengan stub skema `auth` Supabase.
+
+## Skrining kesehatan jiwa (6 instrumen)
+
+Urutan: **SRQ-20 → PHQ-9 → GAD-7 → ASQ → CAPE-15 → CD-RISC-10**. Butir PHQ-9 s.d. CD-RISC-10 mengikuti
+*Kuesioner Kesehatan Mental Mahasiswa* (FIKES UB). Logika ada di `app/src/main/java/com/seiv/app/data/Screening.kt`.
+
+| Instrumen | Skor | Interpretasi di aplikasi |
+|---|---|---|
+| SRQ-20 | 0–20 (jumlah "Ya") | ≥6 ada indikasi |
+| PHQ-9 | 0–27 | 0–4 minimal · 5–9 ringan · 10–14 sedang · 15–19 sedang-berat · ≥20 berat; butir 9 > 0 = darurat |
+| GAD-7 | 0–21 | 0–4 minimal · 5–9 ringan · 10–14 sedang · ≥15 berat |
+| ASQ | jumlah "Ya" butir 1–4 | 0 negatif · ≥1 positif (butuh bantuan segera) · butir 6 "Ya" = positif akut |
+| CAPE-15 | 0–60 (0–4 per butir) | *sementara*: perlu ditinjau bila ≥2 butir "Sering/Sangat sering" atau total ≥30 |
+| CD-RISC-10 | 0–40 | *sementara*: ≥33 tinggi · 26–32 sedang · ≤25 rendah |
+
+Ambang CAPE-15 dan CD-RISC-10 belum memiliki titik potong baku untuk versi ini — sebaiknya dikonfirmasi tim ahli
+lalu ubah fungsi `capeSeverity` / `cdriscSeverity`. Butir "tingkat kesulitan" PHQ-9/GAD-7 dan butir lanjutan ASQ
+(5–6) hanya muncul bila relevan dan tidak dihitung ke skor total.
+
+## Data diri pengguna
+
+Nama lengkap, alamat domisili, status (mahasiswa/bekerja/lainnya), asal instansi & fakultas (bila mahasiswa),
+nomor HP, dan nomor HP wali/kontak darurat. Diminta setelah mendaftar (bisa "Nanti saja") dan dapat diubah di
+Profil → Data Diri. Hanya dapat dilihat pemiliknya, admin, dan konselor yang menangani sesinya.

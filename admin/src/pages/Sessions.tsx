@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { fmtDateTime, rupiah, STATUS_LABEL, supabase, type SessionRow, type SessionStatus } from "../supabase";
+import ProfileDetails from "../ProfileDetails";
+import {
+  fmtDateTime, rupiah, screeningSummary, STATUS_LABEL, supabase,
+  type Profile, type ScreeningRow, type SessionRow, type SessionStatus,
+} from "../supabase";
 
 const FILTERS: { id: SessionStatus | "all"; label: string }[] = [
   { id: "all", label: "Semua" },
@@ -13,8 +17,10 @@ const MOODS = ["😣 Sangat buruk", "😔 Buruk", "😐 Netral", "🙂 Baik", "�
 
 interface ClientData {
   checkIns: { created_at: string; mood: number; factors: string[]; feelings: string[]; note: string }[];
-  screenings: { created_at: string; srq: number; gad: number; phq: number; phq_item9: number }[];
+  screenings: ScreeningRow[];
 }
+
+const SCREENING_COLUMNS = "created_at, srq, gad, phq, phq_item9, asq, asq_acute, asq_attempt, cape, cape_frequent, cdrisc";
 
 export default function Sessions({ isAdmin }: { isAdmin: boolean }) {
   const [rows, setRows] = useState<SessionRow[]>([]);
@@ -123,16 +129,25 @@ function SessionDialog({
   const [note, setNote] = useState(s.counselor_note);
   const [client, setClient] = useState<ClientData | null>(null);
   const [clientError, setClientError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<Partial<Profile> | null>(null);
+
+  useEffect(() => {
+    // Data diri mahasiswa (RLS: admin & konselor yang menangani sesi ini)
+    supabase.from("profiles")
+      .select("full_name, address, occupation, institution, faculty, phone, guardian_phone")
+      .eq("id", s.user_id).maybeSingle()
+      .then(({ data }) => setProfile((data as Partial<Profile>) ?? {}));
+  }, [s.user_id]);
 
   async function loadClient() {
     const [ci, sc] = await Promise.all([
       supabase.from("check_ins").select("created_at, mood, factors, feelings, note")
         .eq("user_id", s.user_id).order("created_at", { ascending: false }).limit(14),
-      supabase.from("screenings").select("created_at, srq, gad, phq, phq_item9")
+      supabase.from("screenings").select(SCREENING_COLUMNS)
         .eq("user_id", s.user_id).order("created_at", { ascending: false }).limit(5),
     ]);
     if (ci.error || sc.error) setClientError((ci.error ?? sc.error)!.message);
-    else setClient({ checkIns: ci.data ?? [], screenings: sc.data ?? [] });
+    else setClient({ checkIns: ci.data ?? [], screenings: (sc.data ?? []) as ScreeningRow[] });
   }
 
   return (
@@ -151,6 +166,9 @@ function SessionDialog({
           <dt>Cerita mahasiswa</dt><dd>{s.note || <span className="muted">—</span>}</dd>
           <dt>Berbagi data</dt><dd>{s.share_check_in ? "Ya, ringkasan check-in & skrining dibagikan" : "Tidak"}</dd>
         </dl>
+
+        <h3>Data diri mahasiswa</h3>
+        {profile ? <ProfileDetails p={profile} /> : <p className="muted small">Memuat…</p>}
 
         <label>
           Pesan untuk mahasiswa (tampil di aplikasi)
@@ -182,12 +200,15 @@ function SessionDialog({
               <>
                 <h3>Skrining terakhir</h3>
                 {client.screenings.length === 0 && <p className="muted small">Belum ada.</p>}
-                {client.screenings.map((r) => (
-                  <div key={r.created_at} className={r.phq_item9 > 0 ? "mini warn" : "mini"}>
-                    {fmtDateTime(r.created_at)} — SRQ-20 {r.srq} · GAD-7 {r.gad} · PHQ-9 {r.phq}
-                    {r.phq_item9 > 0 && <b> · ⚠ butir 9 = {r.phq_item9}</b>}
-                  </div>
-                ))}
+                {client.screenings.map((r) => {
+                  const { text, risk } = screeningSummary(r);
+                  return (
+                    <div key={r.created_at} className={risk ? "mini warn" : "mini"}>
+                      {fmtDateTime(r.created_at)} — {text}
+                      {risk && <div><b>⚠ {risk}</b></div>}
+                    </div>
+                  );
+                })}
                 <h3>Check-in 14 terakhir</h3>
                 {client.checkIns.length === 0 && <p className="muted small">Belum ada.</p>}
                 {client.checkIns.map((c) => (

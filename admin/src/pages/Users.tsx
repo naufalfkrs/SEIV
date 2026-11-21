@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { supabase, type Counselor, type Profile, type Role } from "../supabase";
+import ProfileDetails from "../ProfileDetails";
+import { OCCUPATION_LABEL, supabase, type Counselor, type Profile, type Role } from "../supabase";
 
 const ROLE_LABEL: Record<Role, string> = { student: "Mahasiswa", counselor: "Konselor", admin: "Admin" };
 
@@ -8,6 +9,7 @@ export default function Users() {
   const [counselors, setCounselors] = useState<Counselor[]>([]);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [detail, setDetail] = useState<Profile | null>(null);
 
   async function load() {
     const [u, c] = await Promise.all([
@@ -39,7 +41,8 @@ export default function Users() {
     else load();
   }
 
-  const shown = users.filter((u) => `${u.name} ${u.email}`.toLowerCase().includes(query.toLowerCase()));
+  const shown = users.filter((u) =>
+    `${u.name} ${u.full_name} ${u.email} ${u.institution} ${u.faculty}`.toLowerCase().includes(query.toLowerCase()));
 
   return (
     <>
@@ -53,15 +56,22 @@ export default function Users() {
       <div className="card table-wrap">
         <table>
           <thead>
-            <tr><th>Nama</th><th>Email</th><th>Terdaftar</th><th>Peran</th><th>Profil konselor</th></tr>
+            <tr><th>Nama</th><th>Email</th><th>Status</th><th>Terdaftar</th><th>Peran</th><th>Profil konselor</th><th></th></tr>
           </thead>
           <tbody>
             {shown.map((u) => {
               const linked = counselors.find((c) => c.user_id === u.id);
               return (
                 <tr key={u.id}>
-                  <td>{u.name || "—"}</td>
+                  <td>
+                    {u.full_name || u.name || "—"}
+                    {u.full_name && u.name && u.full_name !== u.name && <div className="muted small">{u.name}</div>}
+                  </td>
                   <td>{u.email}</td>
+                  <td>
+                    {OCCUPATION_LABEL[u.occupation ?? ""]}
+                    {u.occupation === "mahasiswa" && u.institution && <div className="muted small">{u.institution}</div>}
+                  </td>
                   <td>{new Date(u.created_at).toLocaleDateString("id-ID")}</td>
                   <td>
                     <select value={u.role} onChange={(e) => changeRole(u, e.target.value as Role, linked?.id)}>
@@ -76,12 +86,25 @@ export default function Users() {
                       ))}
                     </select>
                   </td>
+                  <td><button className="btn small secondary" onClick={() => setDetail(u)}>Data diri</button></td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
+      {detail && (
+        <div className="modal-backdrop" onClick={() => setDetail(null)}>
+          <div className="card modal" onClick={(e) => e.stopPropagation()}>
+            <div className="row-between">
+              <h2>{detail.full_name || detail.name}</h2>
+              <button className="btn ghost small" onClick={() => setDetail(null)}>✕</button>
+            </div>
+            <p className="muted small">{detail.email}</p>
+            <ProfileDetails p={detail} />
+          </div>
+        </div>
+      )}
     </>
   );
 }

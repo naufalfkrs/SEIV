@@ -11,7 +11,40 @@ import org.json.JSONObject
 import java.util.Calendar
 import java.util.UUID
 
-data class User(val name: String, val email: String)
+data class User(
+    val name: String,
+    val email: String,
+    val profile: Profile = Profile(),
+)
+
+/** Data diri pengguna. occupation: "mahasiswa" | "bekerja" | "lainnya" | "" (belum diisi). */
+data class Profile(
+    val fullName: String = "",
+    val address: String = "",
+    val occupation: String = "",
+    val institution: String = "",
+    val faculty: String = "",
+    val phone: String = "",
+    val guardianPhone: String = "",
+) {
+    val isStudent get() = occupation == "mahasiswa"
+
+    /** Wajib diisi: nama lengkap, domisili, status, no HP, no HP wali (+ instansi & fakultas bila mahasiswa). */
+    val isComplete get() = fullName.isNotBlank() && address.isNotBlank() && occupation.isNotBlank() &&
+        phone.isNotBlank() && guardianPhone.isNotBlank() &&
+        (!isStudent || (institution.isNotBlank() && faculty.isNotBlank()))
+
+    fun toJson(): JSONObject = JSONObject().put("full_name", fullName).put("address", address)
+        .put("occupation", occupation).put("institution", if (isStudent) institution else "")
+        .put("faculty", if (isStudent) faculty else "").put("phone", phone).put("guardian_phone", guardianPhone)
+
+    companion object {
+        fun fromJson(o: JSONObject?) = if (o == null) Profile() else Profile(
+            o.optString("full_name"), o.optString("address"), o.optString("occupation"),
+            o.optString("institution"), o.optString("faculty"), o.optString("phone"), o.optString("guardian_phone"),
+        )
+    }
+}
 
 data class CheckIn(
     val id: String = UUID.randomUUID().toString(),
@@ -36,7 +69,36 @@ data class ScreeningResult(
     val gad: Int,
     val phq: Int,
     val phqItem9: Int,
-)
+    // Instrumen tambahan v2 — null pada hasil skrining versi lama (3 instrumen)
+    val phqDifficulty: Int? = null,
+    val gadDifficulty: Int? = null,
+    val asq: Int? = null,
+    val asqAttempt: Int? = null,
+    val asqAcute: Boolean? = null,
+    val cape: Int? = null,
+    val capeFrequent: Int? = null,
+    val cdrisc: Int? = null,
+) {
+    val isV2 get() = asq != null && cape != null && cdrisc != null
+
+    fun toJson(): JSONObject = JSONObject().put("srq", srq).put("gad", gad).put("phq", phq).put("phq_item9", phqItem9)
+        .put("phq_difficulty", phqDifficulty ?: JSONObject.NULL).put("gad_difficulty", gadDifficulty ?: JSONObject.NULL)
+        .put("asq", asq ?: JSONObject.NULL).put("asq_attempt", asqAttempt ?: JSONObject.NULL)
+        .put("asq_acute", asqAcute ?: JSONObject.NULL).put("cape", cape ?: JSONObject.NULL)
+        .put("cape_frequent", capeFrequent ?: JSONObject.NULL).put("cdrisc", cdrisc ?: JSONObject.NULL)
+
+    companion object {
+        private fun JSONObject.intOrNull(k: String) = if (has(k) && !isNull(k)) getInt(k) else null
+        private fun JSONObject.boolOrNull(k: String) = if (has(k) && !isNull(k)) getBoolean(k) else null
+
+        /** Baca dari JSON server / lokal (kolom sama dengan tabel screenings). */
+        fun fromJson(id: String, ts: Long, o: JSONObject) = ScreeningResult(
+            id, ts, o.getInt("srq"), o.getInt("gad"), o.getInt("phq"), o.optInt("phq_item9", o.optInt("phq9")),
+            o.intOrNull("phq_difficulty"), o.intOrNull("gad_difficulty"), o.intOrNull("asq"), o.intOrNull("asq_attempt"),
+            o.boolOrNull("asq_acute"), o.intOrNull("cape"), o.intOrNull("cape_frequent"), o.intOrNull("cdrisc"),
+        )
+    }
+}
 
 object SessionStatus {
     const val WAITING = "waiting_verification"
@@ -94,16 +156,15 @@ object SeivStore {
         onboarded = prefs.getBoolean("onboarded", false)
         prefs.getString("user", null)?.let {
             val o = JSONObject(it)
-            user = User(o.getString("name"), o.getString("email"))
+            user = User(o.getString("name"), o.getString("email"), Profile.fromJson(o.optJSONObject("profile")))
         }
         pending.addAll(prefs.getStringSet("pending", emptySet()).orEmpty())
         checkIns.addAll(readArray("checkins", ::checkInFromJson))
         journals.addAll(readArray("journals") { o ->
             JournalEntry(o.getString("id"), o.getLong("ts"), o.optString("prompt"), o.getString("text"))
         })
-        screenings.addAll(readArray("screenings") { o ->
-            ScreeningResult(o.getString("id"), o.getLong("ts"), o.getInt("srq"), o.getInt("gad"), o.getInt("phq"), o.optInt("phq9"))
-        })
+        screenings.addAll(readArray("screenings") { o -> ScreeningResult.fromJson(o.getString("id"), o.getLong("ts"), o) })
+        seenNotifications.addAll(prefs.getStringSet("seen_notif", emptySet()).orEmpty())
         sessions.addAll(readArray("sessions") { o ->
             Session(
                 o.getString("id"), o.getString("counselor"), o.getLong("date"), o.getString("time"),
@@ -122,9 +183,27 @@ object SeivStore {
         prefs.edit().putBoolean("onboarded", true).apply()
     }
 
-    fun login(name: String, email: String) {
-        user = User(name, email)
-        prefs.edit().putString("user", JSONObject().put("name", name).put("email", email).toString()).apply()
+    fun login(name: String, email: String, profile: Profile = user?.takeIf { it.email == email }?.profile ?: Profile()) {
+        user = User(name, email, profile)
+        prefs.edit().putString(
+            "user", JSONObject().put("name", name).put("email", email).put("profile", profile.toJson()).toString(),
+        ).apply()
+    }
+
+    fun updateProfile(p: Profile) {
+        val u = user ?: return
+        login(u.name, u.email, p)
+    }
+
+    // ------------------------------------------------------------ notifikasi (sudah dibaca)
+
+    val seenNotifications = androidx.compose.runtime.mutableStateListOf<String>()
+
+    fun markNotificationsSeen(ids: Collection<String>) {
+        val new = ids.filterNot { it in seenNotifications }
+        if (new.isEmpty()) return
+        seenNotifications.addAll(new)
+        prefs.edit().putStringSet("seen_notif", seenNotifications.toSet()).apply()
     }
 
     fun logout(clearData: Boolean) {
@@ -224,8 +303,7 @@ object SeivStore {
     }
 
     private fun saveScreenings() = writeArray("screenings", screenings) {
-        JSONObject().put("id", it.id).put("ts", it.timestamp).put("srq", it.srq)
-            .put("gad", it.gad).put("phq", it.phq).put("phq9", it.phqItem9)
+        it.toJson().put("id", it.id).put("ts", it.timestamp)
     }
 
     private fun saveSessions() = writeArray("sessions", sessions) {
