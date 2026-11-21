@@ -61,11 +61,14 @@ Deno.serve(async (req) => {
   }
 
   // Pastikan pemanggil adalah pengguna SEIV yang login
-  const authHeader = req.headers.get("Authorization") ?? "";
-  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
-    global: { headers: { Authorization: authHeader } },
+  // (verifikasi di kode agar kompatibel dengan JWT signing key baru maupun lama)
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!token) return json({ error: "Unauthorized" }, 401);
+  const serverKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, serverKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data: userData, error: userError } = await supabase.auth.getUser();
+  const { data: userData, error: userError } = await supabase.auth.getUser(token);
   if (userError || !userData.user) return json({ error: "Unauthorized" }, 401);
 
   let payload: { messages?: IncomingMessage[]; name?: string };

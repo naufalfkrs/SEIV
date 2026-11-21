@@ -429,4 +429,4 @@ enabled = true
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":180,\"commaStyle\":\"trailing\"}"
 
 [functions.companion-chat]
-verify_jwt = true
+verify_jwt = false  # token user diverifikasi di dalam fungsi
