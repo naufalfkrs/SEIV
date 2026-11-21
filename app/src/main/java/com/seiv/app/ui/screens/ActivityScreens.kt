@@ -48,6 +48,7 @@ import com.seiv.app.data.*
 import com.seiv.app.data.remote.SeivSync
 import com.seiv.app.ui.Routes
 import com.seiv.app.ui.components.*
+import com.seiv.app.ui.goTab
 import com.seiv.app.ui.resetTo
 import com.seiv.app.ui.theme.Seiv
 import kotlinx.coroutines.coroutineScope
@@ -412,10 +413,8 @@ fun ProfileScreen(nav: NavHostController) {
         }
         Spacer(Modifier.height(20.dp))
         MenuItem(Icons.Outlined.History, "Riwayat Check-in") { nav.navigate(Routes.HISTORY) }
-        MenuItem(Icons.Outlined.Psychology, "Riwayat Skrining") {
-            val last = SeivStore.screenings.firstOrNull()
-            if (last != null) nav.navigate("${Routes.SCREENING_RESULT}/${last.id}") else nav.navigate(Routes.SCREENING_RUN)
-        }
+        // Tab Skrining menampilkan riwayat skrining + tombol mulai skrining baru
+        MenuItem(Icons.Outlined.Psychology, "Riwayat Skrining") { nav.goTab(Routes.SCREENING) }
         MenuItem(Icons.AutoMirrored.Outlined.EventNote, "Sesi Konseling") { nav.navigate(Routes.SESSIONS) }
         MenuItem(Icons.AutoMirrored.Outlined.MenuBook, "Jurnal Refleksi") { nav.navigate(Routes.JOURNAL_EDIT) }
         MenuItem(Icons.Outlined.Emergency, "Bantuan Profesional & Darurat", Seiv.Red) { nav.navigate(Routes.REFERRAL) }
