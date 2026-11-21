@@ -161,7 +161,9 @@ fun CounselingScreen(nav: NavHostController) {
         Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatTile("$done", "Sesi Selesai", Seiv.Primary, Modifier.weight(1f))
             StatTile("${upcoming.size}", "Jadwal Aktif", Seiv.Orange, Modifier.weight(1f))
-            StatTile("4.9", "Rating Rata-rata", Seiv.Purple, Modifier.weight(1f))
+            // Rata-rata rating konselor SEIV (data konselor dari server)
+            val avgRating = SeivStore.counselors.map { it.rating }.average().takeIf { !it.isNaN() }
+            StatTile(avgRating?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "-", "Rating Konselor", Seiv.Purple, Modifier.weight(1f))
         }
 
         Spacer(Modifier.height(20.dp))

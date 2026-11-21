@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Air
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Emergency
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Refresh
@@ -203,6 +204,12 @@ fun ScreeningRunScreen(nav: NavHostController) {
             }
             Spacer(Modifier.width(12.dp))
             Text("${index + 1}/${q.questions.size}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = color)
+            Spacer(Modifier.width(10.dp))
+            // Keluar langsung ke halaman Skrining tanpa mundur satu per satu
+            Box(
+                Modifier.size(36.dp).clip(CircleShape).background(Color.White).clickable { confirmExit = true },
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Outlined.Close, "Keluar dari skrining", tint = Seiv.TextSecondary, modifier = Modifier.size(18.dp)) }
         }
 
         AnimatedContent(
@@ -279,7 +286,7 @@ fun ScreeningRunScreen(nav: NavHostController) {
             onDismissRequest = { confirmExit = false },
             title = { Text("Keluar dari skrining?") },
             text = { Text("Jawaban yang sudah kamu isi tidak akan disimpan.", fontSize = 13.sp) },
-            confirmButton = { TextButton({ confirmExit = false; nav.popBackStack() }) { Text("Keluar", color = Seiv.Red) } },
+            confirmButton = { TextButton({ confirmExit = false; nav.goTab(Routes.SCREENING) }) { Text("Keluar", color = Seiv.Red) } },
             dismissButton = { TextButton({ confirmExit = false }) { Text("Lanjutkan", color = Seiv.Primary) } },
             containerColor = Color.White,
         )

@@ -333,6 +333,34 @@ fun CheckInHistoryScreen(nav: NavHostController) {
 @Composable
 fun ReferralScreen(nav: NavHostController) {
     val ctx = LocalContext.current
+    var showCampus by remember { mutableStateOf(false) }
+    if (showCampus) {
+        AlertDialog(
+            onDismissRequest = { showCampus = false },
+            title = { Text("Layanan Konseling Kampus") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Hampir setiap kampus punya layanan konseling gratis untuk mahasiswa. Biasanya bisa ditemukan di:", fontSize = 13.sp, lineHeight = 18.sp, color = Seiv.Text)
+                    listOf(
+                        "🏫 Unit/UPT Layanan Konseling atau Bimbingan Konseling (BK)",
+                        "🧠 Klinik/Biro Psikologi di Fakultas Psikologi",
+                        "🎓 Bagian Kemahasiswaan fakultas atau universitas",
+                        "👩‍🏫 Dosen Pembimbing Akademik (bisa membantu merujuk)",
+                    ).forEach { Text(it, fontSize = 13.sp, lineHeight = 18.sp, color = Seiv.Text) }
+                    Text("Cek juga website atau akun Instagram resmi kampusmu untuk jadwal dan cara mendaftar.", fontSize = 12.sp, lineHeight = 17.sp, color = Seiv.TextSecondary)
+                }
+            },
+            confirmButton = {
+                TextButton({
+                    showCampus = false
+                    runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=layanan konseling universitas"))) }
+                        .onFailure { Toast.makeText(ctx, "Aplikasi peta tidak ditemukan.", Toast.LENGTH_SHORT).show() }
+                }) { Text("Cari di peta", color = Seiv.Primary) }
+            },
+            dismissButton = { TextButton({ showCampus = false }) { Text("Tutup", color = Seiv.TextSecondary) } },
+            containerColor = Color.White,
+        )
+    }
     Column(Modifier.fillMaxSize().background(Seiv.Background).statusBarsPadding().navigationBarsPadding()) {
         ScreenHeader("Bantuan Profesional", onBack = { nav.popBackStack() }, subtitle = "Kamu tidak harus menghadapinya sendiri")
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
@@ -368,9 +396,7 @@ fun ReferralScreen(nav: NavHostController) {
             Text("Pendampingan lanjutan", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Seiv.Text)
             Spacer(Modifier.height(10.dp))
             NextStep(Icons.Outlined.SupportAgent, Seiv.Primary, Seiv.MintLight, "Konseling di SEIV", "Nurse counselor & psikolog berlisensi") { nav.navigate(Routes.COUNSELORS) }
-            NextStep(Icons.Outlined.School, Seiv.Orange, Seiv.OrangeSoft, "Layanan Konseling Kampus", "Hubungi unit konseling / BK di kampusmu") {
-                Toast.makeText(ctx, "Hubungi unit layanan konseling di fakultas atau universitasmu.", Toast.LENGTH_LONG).show()
-            }
+            NextStep(Icons.Outlined.School, Seiv.Orange, Seiv.OrangeSoft, "Layanan Konseling Kampus", "Hubungi unit konseling / BK di kampusmu") { showCampus = true }
             NextStep(Icons.Outlined.LocalHospital, Seiv.Purple, Seiv.PurpleSoft, "Puskesmas / Rumah Sakit", "Layanan psikolog & psikiater dengan BPJS") {
                 runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=puskesmas"))) }
             }
