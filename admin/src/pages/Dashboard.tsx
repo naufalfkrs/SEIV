@@ -47,7 +47,7 @@ export default function Dashboard() {
         ))}
       </div>
       <p className="muted small">
-        “Berisiko tinggi” = pernah menjawab PHQ-9 butir 9 lebih dari 0, atau skor PHQ-9/GAD-7 ≥ 15. Demi privasi, data
+        “Berisiko tinggi” = ASQ positif, PHQ-9 butir 9 lebih dari 0, atau skor PHQ-9/GAD-7 ≥ 15. Demi privasi, data
         individual tidak ditampilkan ke admin; konselor hanya bisa melihat data klien yang memilih untuk membagikannya.
       </p>
     </>
