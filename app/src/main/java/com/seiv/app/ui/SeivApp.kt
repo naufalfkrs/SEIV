@@ -42,6 +42,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -81,12 +83,27 @@ object Routes {
 
 val TAB_ROUTES = listOf(Routes.HOME, Routes.ACTIVITY, Routes.COUNSELING, Routes.SCREENING, Routes.PROFILE)
 
+/**
+ * Pindah ke salah satu tab utama dan buang layar-layar sekunder di atasnya.
+ * Sengaja tanpa saveState/restoreState: kombinasi itu memulihkan kembali tumpukan
+ * layar yang baru dibuang (mis. tombol "Kembali ke Beranda" malah kembali ke Insight).
+ */
 fun NavHostController.goTab(route: String) {
-    navigate(route) {
-        popUpTo(Routes.HOME) { saveState = true }
-        launchSingleTop = true
-        restoreState = true
+    if (route == Routes.HOME) {
+        // Kembali ke Beranda yang sudah ada di tumpukan; bila tidak ada, buat ulang.
+        if (!popBackStack(Routes.HOME, inclusive = false)) resetTo(Routes.HOME)
+        return
     }
+    navigate(route) {
+        popUpTo(Routes.HOME)
+        launchSingleTop = true
+    }
+}
+
+private fun optionalArg(name: String) = navArgument(name) {
+    type = NavType.StringType
+    nullable = true
+    defaultValue = null
 }
 
 fun NavHostController.resetTo(route: String) {
@@ -138,12 +155,12 @@ fun SeivApp() {
         composable(Routes.PROFILE) { MainScaffold(nav, Routes.PROFILE) { ProfileScreen(nav) } }
 
         // --- Alur sekunder ---
-        composable("${Routes.CHECKIN}?mood={mood}") {
+        composable("${Routes.CHECKIN}?mood={mood}", arguments = listOf(optionalArg("mood"))) {
             CheckInScreen(nav, it.arguments?.getString("mood")?.toIntOrNull())
         }
         composable("${Routes.INSIGHT}/{id}") { InsightScreen(nav, it.arguments?.getString("id").orEmpty()) }
         composable(Routes.COMPANION) { CompanionScreen(nav) }
-        composable("${Routes.COUNSELORS}?role={role}") { CounselorListScreen(nav, it.arguments?.getString("role")) }
+        composable("${Routes.COUNSELORS}?role={role}", arguments = listOf(optionalArg("role"))) { CounselorListScreen(nav, it.arguments?.getString("role")) }
         composable(Routes.SESSIONS) { SessionListScreen(nav) }
         composable("${Routes.SCHEDULE}/{id}") { ScheduleScreen(nav, it.arguments?.getString("id").orEmpty()) }
         composable(Routes.PAYMENT) { PaymentScreen(nav) }
@@ -152,7 +169,7 @@ fun SeivApp() {
         composable("${Routes.SESSION}/{id}") { SessionDetailScreen(nav, it.arguments?.getString("id").orEmpty()) }
         composable(Routes.SCREENING_RUN) { ScreeningRunScreen(nav) }
         composable("${Routes.SCREENING_RESULT}/{id}") { ScreeningResultScreen(nav, it.arguments?.getString("id").orEmpty()) }
-        composable("${Routes.JOURNAL_EDIT}?prompt={prompt}") {
+        composable("${Routes.JOURNAL_EDIT}?prompt={prompt}", arguments = listOf(optionalArg("prompt"))) {
             JournalEditorScreen(nav, it.arguments?.getString("prompt"))
         }
         composable(Routes.BREATHING) { BreathingScreen(nav) }

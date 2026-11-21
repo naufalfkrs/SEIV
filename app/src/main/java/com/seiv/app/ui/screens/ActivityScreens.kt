@@ -387,6 +387,7 @@ fun ProfileScreen(nav: NavHostController) {
     val user = SeivStore.user
     var editName by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
+    var showPrivacy by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = 28.dp)) {
         Text("Profil", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(20.dp))
         SeivCard(Modifier.padding(horizontal = 20.dp).fillMaxWidth()) {
@@ -418,11 +419,11 @@ fun ProfileScreen(nav: NavHostController) {
         MenuItem(Icons.AutoMirrored.Outlined.EventNote, "Sesi Konseling") { nav.navigate(Routes.SESSIONS) }
         MenuItem(Icons.AutoMirrored.Outlined.MenuBook, "Jurnal Refleksi") { nav.navigate(Routes.JOURNAL_EDIT) }
         MenuItem(Icons.Outlined.Emergency, "Bantuan Profesional & Darurat", Seiv.Red) { nav.navigate(Routes.REFERRAL) }
-        MenuItem(Icons.Outlined.Shield, "Privasi & Keamanan Data") {}
+        MenuItem(Icons.Outlined.Shield, "Privasi & Keamanan Data") { showPrivacy = true }
         MenuItem(Icons.AutoMirrored.Outlined.Logout, "Keluar", Seiv.Red) { confirmLogout = true }
         Spacer(Modifier.height(16.dp))
         Text(
-            "SEIV v1.0 · Ruang aman untuk kesehatan mental mahasiswa\nMendukung SDGs 3: Kehidupan Sehat dan Sejahtera",
+            "SEIV v1.1 · Ruang aman untuk kesehatan mental mahasiswa\nMendukung SDGs 3: Kehidupan Sehat dan Sejahtera",
             fontSize = 10.sp, color = Seiv.TextHint, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -437,11 +438,36 @@ fun ProfileScreen(nav: NavHostController) {
             containerColor = Color.White,
         )
     }
+    if (showPrivacy) {
+        AlertDialog(
+            onDismissRequest = { showPrivacy = false },
+            title = { Text("Privasi & Keamanan Data") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        "🔒 Data check-in, jurnal, dan skrining hanya bisa dilihat oleh kamu sendiri.",
+                        "📔 Jurnal refleksi bersifat pribadi — konselor dan admin pun tidak bisa membacanya.",
+                        "🤝 Konselor hanya melihat ringkasan check-in & skrining bila kamu mengaktifkan \"bagikan ringkasan\" saat memesan sesi.",
+                        "💬 Percakapan dengan AI Companion tidak disimpan di server.",
+                        "📱 Data juga tersimpan di HP agar aplikasi tetap bisa dipakai tanpa internet.",
+                    ).forEach { Text(it, fontSize = 13.sp, lineHeight = 18.sp, color = Seiv.Text) }
+                }
+            },
+            confirmButton = { TextButton({ showPrivacy = false }) { Text("Mengerti", color = Seiv.Primary) } },
+            containerColor = Color.White,
+        )
+    }
     if (confirmLogout) {
         AlertDialog(
             onDismissRequest = { confirmLogout = false },
             title = { Text("Keluar dari SEIV?") },
-            text = { Text("Data check-in dan jurnalmu tetap tersimpan di perangkat ini.", fontSize = 13.sp) },
+            text = {
+                Text(
+                    if (SeivSync.online) "Data check-in, jurnal, dan skrining tetap aman di akunmu dan muncul lagi saat kamu masuk kembali."
+                    else "Data check-in dan jurnalmu tetap tersimpan di perangkat ini.",
+                    fontSize = 13.sp,
+                )
+            },
             confirmButton = { TextButton({ confirmLogout = false; SeivSync.signOut(); nav.resetTo(Routes.LOGIN) }) { Text("Keluar", color = Seiv.Red) } },
             dismissButton = { TextButton({ confirmLogout = false }) { Text("Batal", color = Seiv.Primary) } },
             containerColor = Color.White,
