@@ -132,7 +132,7 @@ object SeivSync {
 
     // ------------------------------------------------------------------ AI Companion
 
-    /** Balasan dari Claude lewat Edge Function; null bila offline/gagal (pakai mesin lokal). */
+    /** Balasan dari Gemini lewat Edge Function; null bila offline/gagal (pakai mesin lokal). */
     suspend fun companionReply(history: List<ChatMessage>, name: String): String? {
         if (!online || !SupabaseApi.hasSession) return null
         val msgs = JSONArray()

@@ -24,21 +24,24 @@ AI Companion memakai balasan berbasis aturan.
    bisa dipakai (saat demo). Jika tetap aktif, pengguna harus klik tautan verifikasi di email sebelum masuk.
 4. Catat **Project URL** dan **anon public key** dari **Project Settings → API**.
 
-### Edge Function AI Companion (Claude)
+### Edge Function AI Companion (Google Gemini)
 
-Butuh [Supabase CLI](https://supabase.com/docs/guides/cli) (`npx supabase ...`) dan API key dari
-<https://console.anthropic.com>.
+Butuh [Supabase CLI](https://supabase.com/docs/guides/cli) (`npx supabase ...`, perlu Node.js) dan API key Gemini
+gratis dari <https://aistudio.google.com/apikey>.
 
 ```bash
 npx supabase login
 npx supabase link --project-ref <project-ref>
-npx supabase secrets set ANTHROPIC_API_KEY=<api-key-anthropic>
+npx supabase secrets set GEMINI_API_KEY=<api-key-gemini>
 npx supabase functions deploy companion-chat
 ```
 
-API key Anthropic hanya tersimpan di server Supabase, **tidak pernah** masuk ke APK. Fungsi ini memakai model
-`claude-opus-5-5` dengan effort `low` (balasan cepat untuk chat) dan fallback otomatis ke model cadangan bila
-permintaan ditolak oleh pengaman. Biaya dihitung per pemakaian di akun Anthropic.
+`<project-ref>` adalah bagian acak di Project URL (`https://<project-ref>.supabase.co`).
+
+API key Gemini hanya tersimpan di server Supabase, **tidak pernah** masuk ke APK. Model bawaan adalah
+`gemini-flash-latest` (selalu menunjuk ke Gemini Flash terbaru). Untuk mengunci ke versi tertentu:
+`npx supabase secrets set GEMINI_MODEL=<nama-model>` (daftar di <https://ai.google.dev/gemini-api/docs/models>).
+Bila filter keamanan Gemini memblokir balasan, aplikasi menampilkan pesan aman beserta nomor hotline.
 
 ### Akun admin pertama
 

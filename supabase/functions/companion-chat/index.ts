@@ -1,11 +1,11 @@
 // SEIV — AI Companion (Ruang Cerita)
-// Edge Function Supabase yang meneruskan percakapan ke Claude.
-// API key Anthropic disimpan sebagai secret Supabase (ANTHROPIC_API_KEY),
+// Edge Function Supabase yang meneruskan percakapan ke Google Gemini.
+// API key Gemini disimpan sebagai secret Supabase (GEMINI_API_KEY),
 // tidak pernah dikirim ke aplikasi.
-import Anthropic from "npm:@anthropic-ai/sdk@1.12.0";
 import { createClient } from "npm:@supabase/supabase-js@2.119.2";
 
-const MODEL = "claude-opus-5-5";
+// Bisa diganti tanpa ubah kode: npx supabase secrets set GEMINI_MODEL=<nama-model>
+const MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-flash-latest";
 const MAX_HISTORY = 24; // pesan terakhir yang dikirim ke model
 const MAX_CHARS = 2000; // panjang maksimum per pesan
 
@@ -39,12 +39,26 @@ function json(body: unknown, status = 200) {
 }
 
 type IncomingMessage = { role: "user" | "assistant"; content: string };
+type GeminiContent = { role: "user" | "model"; parts: { text: string }[] };
+type GeminiResponse = {
+  candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] }; finishReason?: string }[];
+  promptFeedback?: { blockReason?: string };
+  error?: { code?: number; message?: string; status?: string };
+};
 
-const anthropic = new Anthropic(); // membaca ANTHROPIC_API_KEY dari environment
+const SAFE_FALLBACK =
+  "Maaf, aku belum bisa menanggapi itu. Tapi aku tetap di sini untukmu 🌿 Kalau kamu sedang dalam bahaya, segera hubungi SEJIWA 119 ext. 8 atau 112.";
+const BLOCKED = new Set(["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII"]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+
+  const apiKey = Deno.env.get("GEMINI_API_KEY");
+  if (!apiKey) {
+    console.error("GEMINI_API_KEY belum di-set");
+    return json({ error: "Layanan AI belum dikonfigurasi." }, 503);
+  }
 
   // Pastikan pemanggil adalah pengguna SEIV yang login
   const authHeader = req.headers.get("Authorization") ?? "";
@@ -61,58 +75,61 @@ Deno.serve(async (req) => {
     return json({ error: "Body harus JSON" }, 400);
   }
 
-  const messages: Anthropic.MessageParam[] = (payload.messages ?? [])
+  const contents: GeminiContent[] = (payload.messages ?? [])
     .filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content.trim())
     .slice(-MAX_HISTORY)
-    .map((m) => ({ role: m.role, content: m.content.slice(0, MAX_CHARS) }));
+    .map((m) => ({ role: m.role === "user" ? "user" : "model", parts: [{ text: m.content.slice(0, MAX_CHARS) }] }));
 
   // Percakapan harus diawali pesan pengguna (salam pembuka dari aplikasi dibuang)
-  while (messages.length && messages[0].role !== "user") messages.shift();
-  if (!messages.length || messages[messages.length - 1].role !== "user") {
+  while (contents.length && contents[0].role !== "user") contents.shift();
+  if (!contents.length || contents[contents.length - 1].role !== "user") {
     return json({ error: "Pesan terakhir harus dari pengguna" }, 400);
   }
 
   const name = (payload.name ?? "").slice(0, 40).replace(/[^\p{L}\p{N} .'-]/gu, "");
   const system = name ? `${SYSTEM_PROMPT}\n\nNama panggilan pengguna: ${name}.` : SYSTEM_PROMPT;
 
+  let res: Response;
   try {
-    const response = await anthropic.beta.messages.create({
-      model: MODEL,
-      max_tokens: 16000,
-      system,
-      messages,
-      output_config: { effort: "low" }, // percakapan ringan: respons cepat
-      // Bila model utama menolak karena kebijakan keamanan, API otomatis mencoba model cadangan
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-    });
-
-    if (response.stop_reason === "refusal") {
-      return json({
-        reply:
-          "Maaf, aku belum bisa menanggapi itu. Tapi aku tetap di sini untukmu 🌿 Kalau kamu sedang dalam bahaya, segera hubungi SEJIWA 119 ext. 8 atau 112.",
-        refused: true,
-      });
-    }
-
-    const reply = response.content
-      .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("\n")
-      .trim();
-
-    return json({ reply: reply || "Aku mendengarkan. Ceritakan lebih banyak, ya?" });
+    res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: system }] },
+          contents,
+          generationConfig: { maxOutputTokens: 4096 },
+        }),
+      },
+    );
   } catch (error) {
-    if (error instanceof Anthropic.RateLimitError) {
-      return json({ error: "Terlalu banyak permintaan, coba sebentar lagi." }, 429);
-    } else if (error instanceof Anthropic.AuthenticationError) {
-      console.error("ANTHROPIC_API_KEY tidak valid");
-      return json({ error: "Layanan AI belum dikonfigurasi." }, 503);
-    } else if (error instanceof Anthropic.APIError) {
-      console.error(`Anthropic API error ${error.status}:`, error.message);
-      return json({ error: "Layanan AI sedang bermasalah." }, 502);
-    }
-    console.error(error);
-    return json({ error: "Terjadi kesalahan." }, 500);
+    console.error("Gagal menghubungi Gemini:", error);
+    return json({ error: "Layanan AI sedang bermasalah." }, 502);
   }
+
+  const data: GeminiResponse = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data.error?.message ?? "";
+    console.error(`Gemini API error ${res.status}:`, msg);
+    if (res.status === 429) return json({ error: "Terlalu banyak permintaan, coba sebentar lagi." }, 429);
+    if (res.status === 401 || res.status === 403 || /api key/i.test(msg)) {
+      return json({ error: "Layanan AI belum dikonfigurasi." }, 503);
+    }
+    return json({ error: "Layanan AI sedang bermasalah." }, 502);
+  }
+
+  // Diblokir oleh filter keamanan Gemini → balasan aman + arahkan ke bantuan
+  const candidate = data.candidates?.[0];
+  if (data.promptFeedback?.blockReason || !candidate || BLOCKED.has(candidate.finishReason ?? "")) {
+    return json({ reply: SAFE_FALLBACK, refused: true });
+  }
+
+  const reply = (candidate.content?.parts ?? [])
+    .filter((p) => !p.thought && typeof p.text === "string")
+    .map((p) => p.text)
+    .join("")
+    .trim();
+
+  return json({ reply: reply || "Aku mendengarkan. Ceritakan lebih banyak, ya?" });
 });
