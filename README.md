@@ -39,7 +39,7 @@ npx supabase functions deploy companion-chat
 `<project-ref>` adalah bagian acak di Project URL (`https://<project-ref>.supabase.co`).
 
 API key Gemini hanya tersimpan di server Supabase, **tidak pernah** masuk ke APK. Model bawaan adalah
-`gemini-flash-latest` (selalu menunjuk ke Gemini Flash terbaru). Untuk mengunci ke versi tertentu:
+`gemini-3.1-flash-lite` (stabil, balasan ~2 detik). Alias `gemini-flash-latest` sempat macet >25 detik, jadi tidak dipakai. Untuk mengganti model:
 `npx supabase secrets set GEMINI_MODEL=<nama-model>` (daftar di <https://ai.google.dev/gemini-api/docs/models>).
 Bila filter keamanan Gemini memblokir balasan, aplikasi menampilkan pesan aman beserta nomor hotline.
 

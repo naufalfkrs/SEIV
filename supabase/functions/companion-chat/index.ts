@@ -5,7 +5,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2.119.2";
 
 // Bisa diganti tanpa ubah kode: npx supabase secrets set GEMINI_MODEL=<nama-model>
-const MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-flash-latest";
+// gemini-3.1-flash-lite: stabil & cepat (~1–2 detik). Alias gemini-flash-latest sempat macet >25 detik.
+const MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-3.1-flash-lite";
 const MAX_HISTORY = 24; // pesan terakhir yang dikirim ke model
 const MAX_CHARS = 2000; // panjang maksimum per pesan
 
@@ -50,6 +51,13 @@ const SAFE_FALLBACK =
   "Maaf, aku belum bisa menanggapi itu. Tapi aku tetap di sini untukmu 🌿 Kalau kamu sedang dalam bahaya, segera hubungi SEJIWA 119 ext. 8 atau 112.";
 const BLOCKED = new Set(["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII"]);
 
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label} timeout ${ms}ms`)), ms)),
+  ]);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -68,8 +76,19 @@ Deno.serve(async (req) => {
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, serverKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data: userData, error: userError } = await supabase.auth.getUser(token);
-  if (userError || !userData.user) return json({ error: "Unauthorized" }, 401);
+  const t0 = Date.now();
+  let auth;
+  try {
+    auth = await withTimeout(supabase.auth.getUser(token), 10_000, "auth");
+  } catch (e) {
+    console.error("auth error:", e);
+    return json({ error: "Layanan sedang bermasalah." }, 502);
+  }
+  const { data: userData, error: userError } = auth;
+  if (userError || !userData.user) {
+    console.warn("auth gagal:", userError?.message);
+    return json({ error: "Unauthorized" }, 401);
+  }
 
   let payload: { messages?: IncomingMessage[]; name?: string };
   try {
@@ -99,10 +118,12 @@ Deno.serve(async (req) => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        signal: AbortSignal.timeout(40_000),
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: system }] },
           contents,
-          generationConfig: { maxOutputTokens: 4096 },
+          // Chat ringan: batasi "thinking" agar balasan cepat
+          generationConfig: { maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: "low" } },
         }),
       },
     );
@@ -112,6 +133,7 @@ Deno.serve(async (req) => {
   }
 
   const data: GeminiResponse = await res.json().catch(() => ({}));
+  console.log(`gemini ${MODEL} status ${res.status} ${Date.now() - t0}ms finish=${data.candidates?.[0]?.finishReason}`);
   if (!res.ok) {
     const msg = data.error?.message ?? "";
     console.error(`Gemini API error ${res.status}:`, msg);
