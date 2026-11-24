@@ -13,6 +13,7 @@ import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Cancel
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.HourglassTop
 import androidx.compose.material.icons.outlined.NotificationsNone
@@ -250,7 +251,7 @@ fun buildNotifications(): List<Notif> {
             SessionStatus.CONFIRMED -> {
                 list += Notif(
                     "s-${s.id}-confirmed", Icons.Outlined.CheckCircle, Seiv.Primary, Seiv.MintLight,
-                    "Sesi terkonfirmasi 🎉", "Pembayaranmu sudah diverifikasi. Sesi dengan ${c.name} pada $whenText.", s.createdAt + 1, route,
+                    "Sesi terkonfirmasi 🎉", "Pembayaranmu sudah diverifikasi. Sesi dengan ${c.name} pada $whenText.", s.updatedAt, route,
                 )
                 if (start in now..(now + 24 * 3600_000L)) list += Notif(
                     "s-${s.id}-soon", Icons.Outlined.CalendarMonth, Seiv.Purple, Seiv.PurpleSoft,
@@ -260,21 +261,21 @@ fun buildNotifications(): List<Notif> {
             SessionStatus.COMPLETED -> {
                 list += Notif(
                     "s-${s.id}-completed", Icons.Outlined.TaskAlt, Seiv.Purple, Seiv.PurpleSoft,
-                    "Sesi selesai", "Terima kasih sudah hadir di sesi dengan ${c.name}. Jaga dirimu, ya!", start, route,
+                    "Sesi selesai", "Terima kasih sudah hadir di sesi dengan ${c.name}. Jaga dirimu, ya!", s.updatedAt, route,
                 )
                 if (SeivStore.reviewFor(s.id) == null) list += Notif(
                     "s-${s.id}-review", Icons.Outlined.StarOutline, Seiv.Orange, Seiv.OrangeSoft,
-                    "Bagaimana sesimu?", "Beri ulasan untuk ${c.name} agar mahasiswa lain terbantu memilih konselor.", start + 1, route,
+                    "Bagaimana sesimu?", "Beri ulasan untuk ${c.name} agar mahasiswa lain terbantu memilih konselor.", s.updatedAt + 1, route,
                 )
             }
             SessionStatus.CANCELLED -> list += Notif(
                 "s-${s.id}-cancelled", Icons.Outlined.Cancel, Seiv.Red, Seiv.RedSoft,
-                "Sesi dibatalkan", "Sesi dengan ${c.name} ($whenText) dibatalkan. Hubungi admin SEIV bila ada pertanyaan.", s.createdAt + 2, route,
+                "Sesi dibatalkan", "Sesi dengan ${c.name} ($whenText) dibatalkan. Hubungi admin SEIV bila ada pertanyaan.", s.updatedAt, route,
             )
         }
         if (s.counselorNote.isNotBlank()) list += Notif(
             "s-${s.id}-note-${s.counselorNote.hashCode()}", Icons.AutoMirrored.Outlined.Chat, Seiv.Primary, Seiv.MintLight,
-            "Pesan dari ${c.name}", s.counselorNote, s.createdAt + 3, route,
+            "Pesan dari ${c.name}", s.counselorNote, s.updatedAt + 2, route,
         )
     }
     SeivStore.screenings.firstOrNull()?.let { r ->
@@ -299,7 +300,10 @@ fun buildNotifications(): List<Notif> {
             "Bagaimana perasaanmu hari ini?", "Luangkan 1 menit untuk check-in harian.", now - 2, Routes.CHECKIN,
         )
     }
-    return list.sortedByDescending { it.time }
+    // Waktu stabil per notifikasi, sembunyikan yang sudah dihapus, terbaru di atas
+    return list.map { it.copy(time = SeivStore.notificationTime(it.id, it.time)) }
+        .filterNot { it.id in SeivStore.dismissedNotifications }
+        .sortedByDescending { it.time }
 }
 
 @Composable
@@ -308,58 +312,122 @@ fun unreadNotificationCount(): Int {
     return buildNotifications().count { it.id !in seen }
 }
 
+/** "Baru saja", "5 mnt lalu", "2 jam lalu", "Kemarin", atau tanggal. */
+private fun relativeTime(t: Long): String {
+    val diff = (System.currentTimeMillis() - t).coerceAtLeast(0)
+    val min = diff / 60_000
+    return when {
+        min < 1 -> "Baru saja"
+        min < 60 -> "$min mnt lalu"
+        min < 24 * 60 -> "${min / 60} jam lalu"
+        min < 48 * 60 -> "Kemarin"
+        else -> formatDate(t, "d MMM")
+    }
+}
+
+private const val VISIBLE_NOTIFICATIONS = 5
+
 @Composable
 fun NotificationsScreen(nav: NavHostController) {
-    val items = remember(SeivStore.sessions.toList(), SeivStore.screenings.size, SeivStore.checkIns.size, SeivStore.user) { buildNotifications() }
+    // Dibaca langsung dari state (sesi, skrining, ulasan, notifikasi yang dihapus) agar selalu terbaru
+    val items = buildNotifications()
     // Status "belum dibaca" dihitung saat layar dibuka, lalu semua ditandai dibaca
     val unreadIds = remember { items.filter { it.id !in SeivStore.seenNotifications }.map { it.id }.toSet() }
-    LaunchedEffect(Unit) {
-        SeivSync.refreshInBackground()
-        SeivStore.markNotificationsSeen(items.map { it.id })
-    }
+    var showAll by remember { mutableStateOf(false) }
+    var confirmClear by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { SeivSync.refreshInBackground() }
+    LaunchedEffect(items.map { it.id }) { SeivStore.markNotificationsSeen(items.map { it.id }) }
+
     Column(Modifier.fillMaxSize().background(Seiv.Background).statusBarsPadding().navigationBarsPadding()) {
-        ScreenHeader("Notifikasi", onBack = { nav.popBackStack() }, subtitle = "Kabar terbaru untukmu")
-        if (items.isEmpty()) {
-            Column(Modifier.fillMaxSize().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Icon(Icons.Outlined.NotificationsNone, null, tint = Seiv.TextHint, modifier = Modifier.size(48.dp))
-                Spacer(Modifier.height(10.dp))
-                Text("Belum ada notifikasi", color = Seiv.TextSecondary, fontSize = 13.sp)
+        ScreenHeader("Notifikasi", onBack = { nav.popBackStack() }, subtitle = "Kabar terbaru untukmu") {
+            if (items.isNotEmpty()) {
+                Text(
+                    "Hapus semua", fontSize = 12.sp, color = Seiv.Primary, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { confirmClear = true }.padding(8.dp),
+                )
             }
-            return
         }
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
-            items.forEach { n ->
-                val unread = n.id in unreadIds
-                SeivCard(
-                    Modifier.fillMaxWidth().padding(bottom = 10.dp),
-                    color = if (unread) Color.White else Color.White.copy(alpha = 0.6f),
-                    padding = PaddingValues(14.dp),
-                    onClick = n.route?.let { r ->
-                        {
-                            when (r) {
-                                Routes.SCREENING -> nav.goTab(Routes.SCREENING)
-                                Routes.CHECKIN -> nav.navigate(Routes.CHECKIN)
-                                else -> nav.navigate(r)
-                            }
-                        }
-                    },
+        RefreshBox(Modifier.weight(1f)) {
+            if (items.isEmpty()) {
+                Column(
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(40.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
                 ) {
-                    Row(verticalAlignment = Alignment.Top) {
-                        IconBadge(n.icon, n.tint, n.bg)
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(n.title, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Seiv.Text)
-                            Spacer(Modifier.height(2.dp))
-                            Text(n.body, fontSize = 12.sp, color = Seiv.TextSecondary, lineHeight = 17.sp)
-                        }
-                        if (unread) {
-                            Spacer(Modifier.width(8.dp))
-                            Box(Modifier.padding(top = 4.dp).size(8.dp).clip(CircleShape).background(Seiv.Red))
-                        }
-                    }
+                    Icon(Icons.Outlined.NotificationsNone, null, tint = Seiv.TextHint, modifier = Modifier.size(48.dp))
+                    Spacer(Modifier.height(10.dp))
+                    Text("Belum ada notifikasi", color = Seiv.TextSecondary, fontSize = 13.sp)
+                }
+                return@RefreshBox
+            }
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+                val shown = if (showAll) items else items.take(VISIBLE_NOTIFICATIONS)
+                shown.forEach { n -> NotificationCard(n, n.id in unreadIds, nav) }
+                val hidden = items.size - VISIBLE_NOTIFICATIONS
+                if (hidden > 0) {
+                    Text(
+                        if (showAll) "Sembunyikan notifikasi lama ▲" else "Lihat $hidden notifikasi lebih lama ▼",
+                        fontSize = 13.sp, color = Seiv.Primary, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.align(Alignment.CenterHorizontally).clip(RoundedCornerShape(8.dp))
+                            .clickable { showAll = !showAll }.padding(12.dp),
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+    }
+    if (confirmClear) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("Hapus semua notifikasi?") },
+            text = { Text("Notifikasi yang dihapus tidak ditampilkan lagi. Kabar baru tetap akan muncul.", fontSize = 13.sp) },
+            confirmButton = {
+                androidx.compose.material3.TextButton({ SeivStore.dismissNotifications(items.map { it.id }); confirmClear = false }) {
+                    Text("Hapus", color = Seiv.Red)
+                }
+            },
+            dismissButton = { androidx.compose.material3.TextButton({ confirmClear = false }) { Text("Batal", color = Seiv.Primary) } },
+            containerColor = Color.White,
+        )
+    }
+}
+
+@Composable
+private fun NotificationCard(n: Notif, unread: Boolean, nav: NavHostController) {
+    SeivCard(
+        Modifier.fillMaxWidth().padding(bottom = 10.dp),
+        color = if (unread) Color.White else Color.White.copy(alpha = 0.6f),
+        padding = PaddingValues(start = 14.dp, top = 14.dp, bottom = 14.dp, end = 6.dp),
+        onClick = n.route?.let { r ->
+            {
+                when (r) {
+                    Routes.SCREENING -> nav.goTab(Routes.SCREENING)
+                    Routes.CHECKIN -> nav.navigate(Routes.CHECKIN)
+                    else -> nav.navigate(r)
                 }
             }
-            Spacer(Modifier.height(16.dp))
+        },
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            IconBadge(n.icon, n.tint, n.bg)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (unread) {
+                        Box(Modifier.size(7.dp).clip(CircleShape).background(Seiv.Red))
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text(n.title, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Seiv.Text, modifier = Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(2.dp))
+                Text(n.body, fontSize = 12.sp, color = Seiv.TextSecondary, lineHeight = 17.sp)
+                Spacer(Modifier.height(4.dp))
+                Text(relativeTime(n.time), fontSize = 10.sp, color = Seiv.TextHint)
+            }
+            // Hapus satu notifikasi
+            Icon(
+                Icons.Outlined.Close, "Hapus notifikasi", tint = Seiv.TextHint,
+                modifier = Modifier.size(30.dp).clip(CircleShape).clickable { SeivStore.dismissNotifications(listOf(n.id)) }.padding(7.dp),
+            )
         }
     }
 }

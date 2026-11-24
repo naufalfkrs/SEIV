@@ -53,6 +53,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.seiv.app.data.SeivStore
 import com.seiv.app.data.remote.SeivSync
+import com.seiv.app.ui.components.RefreshBox
 import com.seiv.app.data.remote.SupabaseApi
 import com.seiv.app.ui.screens.*
 import com.seiv.app.ui.theme.Seiv
@@ -210,10 +211,13 @@ fun SeivApp() {
 
 @Composable
 fun MainScaffold(nav: NavHostController, current: String, content: @Composable () -> Unit) {
+    // Setiap tab dibuka: ambil data terbaru dari server (layar ikut berubah otomatis)
+    LaunchedEffect(current) { SeivSync.refreshInBackground() }
     Box(Modifier.fillMaxSize().background(Seiv.Background)) {
         // Sisakan ruang untuk tinggi navbar (64dp), inset navigasi sistem, dan
         // tombol Konseling di tengah yang menonjol 22dp di atas navbar.
-        Box(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = 64.dp + 30.dp)) { content() }
+        // Tarik layar ke bawah untuk memuat ulang.
+        RefreshBox(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = 64.dp + 30.dp)) { content() }
         BottomBar(
             current = current,
             onSelect = { if (it != current) nav.goTab(it) },

@@ -258,13 +258,16 @@ fun StatusTag(status: String) {
 
 @Composable
 fun SessionListScreen(nav: NavHostController) {
+    LaunchedEffect(Unit) { SeivSync.refreshInBackground() }
     Column(Modifier.fillMaxSize().background(Seiv.Background).statusBarsPadding().navigationBarsPadding()) {
         ScreenHeader("Riwayat Sesi", onBack = { nav.popBackStack() }, subtitle = "Semua sesi konselingmu")
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
-            if (SeivStore.sessions.isEmpty()) {
-                EmptyState("🗓️", "Belum ada sesi", "Sesi konseling yang kamu jadwalkan akan muncul di sini.")
+        RefreshBox(Modifier.weight(1f)) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+                if (SeivStore.sessions.isEmpty()) {
+                    EmptyState("🗓️", "Belum ada sesi", "Sesi konseling yang kamu jadwalkan akan muncul di sini.")
+                }
+                SeivStore.sessions.forEach { s -> SessionRow(s, Modifier.padding(vertical = 5.dp)) { nav.navigate("${Routes.SESSION}/${s.id}") } }
             }
-            SeivStore.sessions.forEach { s -> SessionRow(s, Modifier.padding(vertical = 5.dp)) { nav.navigate("${Routes.SESSION}/${s.id}") } }
         }
         PrimaryButton("Jadwalkan Sesi Baru", onClick = { nav.navigate(Routes.COUNSELORS) }, modifier = Modifier.padding(20.dp))
     }
@@ -293,7 +296,7 @@ fun CounselorListScreen(nav: NavHostController, role: String?) {
         ScreenHeader("Pilih Konselor", onBack = { nav.popBackStack() }, subtitle = "Pilih yang paling sesuai untukmu") {
             Text("🌿", fontSize = 22.sp)
         }
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+        RefreshBox(Modifier.weight(1f)) { Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
             list.forEach { c ->
                 CounselorCard(c) {
                     BookingDraft.counselorId = c.id
@@ -312,7 +315,7 @@ fun CounselorListScreen(nav: NavHostController, role: String?) {
                 }
             }
             Spacer(Modifier.height(20.dp))
-        }
+        } }
     }
 }
 
@@ -898,6 +901,15 @@ fun SessionDetailScreen(nav: NavHostController, id: String) {
     val c = counselorById(s.counselorId)
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(1000); now = System.currentTimeMillis() } }
+    // Selama sesi masih menunggu/berjalan, cek server berkala (cadangan bila push terlambat).
+    // Layar membaca SeivStore, jadi status & pesan konselor langsung berubah saat data baru masuk.
+    LaunchedEffect(s.id, s.status) {
+        SeivSync.refreshInBackground()
+        while (s.status == SessionStatus.WAITING || s.status == SessionStatus.CONFIRMED) {
+            delay(15_000)
+            SeivSync.refreshInBackground()
+        }
+    }
     val start = sessionStartMillis(s.dateMillis, s.time)
     val end = start + SESSION_MINUTES * 60_000
     var share by remember { mutableStateOf(s.shareCheckIn) }

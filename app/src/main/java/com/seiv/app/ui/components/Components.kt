@@ -259,3 +259,18 @@ fun Pill(text: String, modifier: Modifier = Modifier, bg: Color = Seiv.MintLight
         Text(text, color = fg, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
     }
 }
+
+/**
+ * Tarik layar ke bawah untuk memuat ulang data dari server.
+ * Indikator mengikuti status sinkronisasi [com.seiv.app.data.remote.SeivSync.syncing].
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun RefreshBox(modifier: Modifier = Modifier, content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit) {
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+        isRefreshing = com.seiv.app.data.remote.SeivSync.syncing,
+        onRefresh = { com.seiv.app.data.remote.SeivSync.refreshInBackground() },
+        modifier = modifier,
+        content = content,
+    )
+}

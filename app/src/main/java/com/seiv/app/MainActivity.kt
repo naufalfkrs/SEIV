@@ -41,6 +41,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Kembali dari latar belakang: ambil status terbaru (mis. sesi baru dikonfirmasi admin)
+        SeivSync.refreshInBackground()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleRoute(intent)

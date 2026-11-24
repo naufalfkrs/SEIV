@@ -146,6 +146,8 @@ data class Session(
     val createdAt: Long = System.currentTimeMillis(),
     val status: String = SessionStatus.CONFIRMED,
     val counselorNote: String = "",
+    /** Waktu terakhir status/pesan konselor berubah di server (untuk urutan notifikasi). */
+    val updatedAt: Long = createdAt,
 )
 
 /**
@@ -201,12 +203,17 @@ object SeivStore {
         })
         screenings.addAll(readArray("screenings") { o -> ScreeningResult.fromJson(o.getString("id"), o.getLong("ts"), o) })
         seenNotifications.addAll(prefs.getStringSet("seen_notif", emptySet()).orEmpty())
+        dismissedNotifications.addAll(prefs.getStringSet("dismissed_notif", emptySet()).orEmpty())
+        runCatching {
+            val o = JSONObject(prefs.getString("notif_times", "{}")!!)
+            o.keys().forEach { notifTimes[it] = o.getLong(it) }
+        }
         sessions.addAll(readArray("sessions") { o ->
             Session(
                 o.getString("id"), o.getString("counselor"), o.getLong("date"), o.getString("time"),
                 o.getString("method"), o.optString("note"), o.optBoolean("share"),
                 o.getString("pay"), o.getInt("total"), o.getLong("created"),
-                o.optString("status", SessionStatus.CONFIRMED), o.optString("cnote"),
+                o.optString("status", SessionStatus.CONFIRMED), o.optString("cnote"), o.optLong("updated", o.getLong("created")),
             )
         })
         readArray("counselors", ::counselorFromJson).takeIf { it.isNotEmpty() }?.let { setCounselors(it, persist = false) }
@@ -243,6 +250,33 @@ object SeivStore {
         if (new.isEmpty()) return
         seenNotifications.addAll(new)
         prefs.edit().putStringSet("seen_notif", seenNotifications.toSet()).apply()
+    }
+
+    /** Notifikasi yang disembunyikan/dihapus pengguna. */
+    val dismissedNotifications = androidx.compose.runtime.mutableStateListOf<String>()
+
+    fun dismissNotifications(ids: Collection<String>) {
+        val new = ids.filterNot { it in dismissedNotifications }
+        if (new.isEmpty()) return
+        dismissedNotifications.addAll(new)
+        prefs.edit().putStringSet("dismissed_notif", dismissedNotifications.toSet()).apply()
+    }
+
+    /**
+     * Waktu notifikasi pertama kali muncul. Dipakai agar urutan stabil dan kronologis:
+     * kejadian memakai waktu aslinya, pengingat memakai saat pertama kali tampil.
+     */
+    private val notifTimes = mutableMapOf<String, Long>()
+
+    fun notificationTime(id: String, eventTime: Long): Long {
+        if (!::prefs.isInitialized) return eventTime
+        notifTimes[id]?.let { return it }
+        val t = minOf(eventTime, System.currentTimeMillis())
+        notifTimes[id] = t
+        // Simpan; buang catatan lama (> 300 entri) agar tidak membengkak
+        val keep = notifTimes.entries.sortedByDescending { it.value }.take(300)
+        prefs.edit().putString("notif_times", JSONObject().apply { keep.forEach { put(it.key, it.value) } }.toString()).apply()
+        return t
     }
 
     fun logout(clearData: Boolean) {
@@ -349,7 +383,7 @@ object SeivStore {
         JSONObject().put("id", it.id).put("counselor", it.counselorId).put("date", it.dateMillis)
             .put("time", it.time).put("method", it.method).put("note", it.note)
             .put("share", it.shareCheckIn).put("pay", it.paymentMethod).put("total", it.total)
-            .put("created", it.createdAt).put("status", it.status).put("cnote", it.counselorNote)
+            .put("created", it.createdAt).put("status", it.status).put("cnote", it.counselorNote).put("updated", it.updatedAt)
     }
 
     private fun counselorToJson(c: Counselor) = JSONObject().put("id", c.id).put("name", c.name).put("role", c.role)

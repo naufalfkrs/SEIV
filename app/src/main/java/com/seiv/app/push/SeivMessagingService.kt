@@ -16,6 +16,7 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.seiv.app.MainActivity
 import com.seiv.app.R
+import com.seiv.app.data.SeivStore
 import com.seiv.app.data.remote.SeivSync
 import com.seiv.app.data.remote.SupabaseApi
 
@@ -36,6 +37,11 @@ class SeivMessagingService : FirebaseMessagingService() {
         val title = message.data["title"] ?: message.notification?.title ?: return
         val body = message.data["body"] ?: message.notification?.body.orEmpty()
         show(this, title, body, message.data["route"])
+        // Push = ada perubahan di server (mis. status sesi). Ambil data terbaru agar layar
+        // yang sedang terbuka langsung ikut berubah tanpa harus keluar-masuk menu.
+        SeivStore.init(applicationContext)
+        SupabaseApi.init(applicationContext)
+        SeivSync.refreshInBackground()
     }
 
     companion object {

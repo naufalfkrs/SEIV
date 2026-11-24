@@ -207,8 +207,13 @@ object SeivSync {
 
     /** Kirim antrean yang tertunda lalu ambil ulang semua data dari server. */
     fun refreshInBackground() {
-        if (online && SupabaseApi.hasSession && !syncing) scope.launch { runCatching { refresh() } }
+        if (!online || !SupabaseApi.hasSession) return
+        // Bila sinkron sedang berjalan, jadwalkan satu putaran lagi agar perubahan terbaru tidak terlewat
+        if (syncing) { refreshAgain = true; return }
+        scope.launch { runCatching { refresh() } }
     }
+
+    @Volatile private var refreshAgain = false
 
     suspend fun refresh() {
         if (!online || !SupabaseApi.hasSession) return
@@ -239,6 +244,10 @@ object SeivSync {
             )
         } finally {
             syncing = false
+            if (refreshAgain) {
+                refreshAgain = false
+                refreshInBackground()
+            }
         }
     }
 
@@ -309,6 +318,7 @@ object SeivSync {
             shareCheckIn = o.optBoolean("share_check_in"), paymentMethod = o.getString("payment_method"),
             total = o.getInt("total"), createdAt = ms(o.getString("created_at")),
             status = o.optString("status", SessionStatus.WAITING), counselorNote = o.optString("counselor_note"),
+            updatedAt = o.optString("updated_at").takeIf { it.isNotBlank() }?.let(::ms) ?: ms(o.getString("created_at")),
         )
     }
 
