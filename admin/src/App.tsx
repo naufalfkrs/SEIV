@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { configured, supabase, type Profile } from "./supabase";
-import Login from "./pages/Login";
+import Login, { ResetPassword } from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Sessions from "./pages/Sessions";
 import Counselors from "./pages/Counselors";
@@ -14,13 +14,18 @@ export default function App() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState<Page>("sessions");
+  // true saat dibuka dari tautan "atur ulang kata sandi" di email
+  const [recovery, setRecovery] = useState(() => window.location.hash.includes("type=recovery"));
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       if (!data.session) setLoading(false);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === "PASSWORD_RECOVERY") setRecovery(true);
+      setSession(s);
+    });
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -55,6 +60,9 @@ export default function App() {
         </div>
       </div>
     );
+  }
+  if (recovery && session) {
+    return <ResetPassword onDone={() => { setRecovery(false); window.history.replaceState(null, "", "/"); }} />;
   }
   if (loading) return <div className="center-screen muted">Memuat…</div>;
   if (!session) return <Login />;
