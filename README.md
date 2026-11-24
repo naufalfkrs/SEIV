@@ -82,6 +82,12 @@ APK: `app/build/outputs/apk/release/app-release.apk`.
 
 Tanpa langkah ini, tombol Google menampilkan pesan bahwa login Google belum diaktifkan.
 
+> **Penting:** Web Client ID harus berasal dari project Google Cloud yang **sama** dengan OAuth client Android
+> (package + SHA-1). Bila berbeda, Google menolak dengan *"Developer console is not set up correctly"* (28444).
+> SEIV memakai Web client milik project Firebase `seiv-75661`. Kolom **Client IDs** di Supabase boleh berisi
+> beberapa ID dipisah koma. Akun Google dengan email yang sama dengan akun email/kata sandi digabung otomatis;
+> email berbeda menjadi akun baru.
+
 ## 3. Panel admin & konselor
 
 ```bash
