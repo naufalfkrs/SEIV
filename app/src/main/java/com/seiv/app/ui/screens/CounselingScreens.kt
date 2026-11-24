@@ -82,6 +82,9 @@ object BookingDraft {
 
 const val SESSION_MINUTES = 45
 
+/** Kelonggaran setelah durasi sesi habis sebelum ruang sesi ditutup (sama dengan server). */
+const val ROOM_GRACE_MINUTES = 15
+
 fun sessionStartMillis(dateMillis: Long, time: String): Long {
     val (h, m) = time.split(":").map { it.toInt() }
     return Calendar.getInstance().apply {
@@ -1016,29 +1019,39 @@ fun SessionDetailScreen(nav: NavHostController, id: String) {
             }
             Spacer(Modifier.height(16.dp))
         }
+        // Ruang sesi (chat maupun voice/video) hanya terbuka pada jam sesi:
+        // tepat jam mulai sampai akhir durasi + 15 menit (sama dengan aturan di server)
+        val roomCloses = end + ROOM_GRACE_MINUTES * 60_000
+        val confirmed = s.status == SessionStatus.CONFIRMED
+        val beforeStart = now < start
+        val roomOpen = confirmed && !beforeStart && now <= roomCloses
         val isChat = s.method == "Chat"
         if (isChat) {
-            // Sesi Chat: ruang chat di dalam aplikasi (riwayat tetap bisa dibaca setelah selesai)
+            // Sesi Chat: ruang chat di dalam aplikasi (riwayat tetap bisa dibaca setelah sesi)
             PrimaryButton(
-                when (s.status) {
-                    SessionStatus.WAITING -> "Ruang chat terbuka setelah verifikasi"
-                    SessionStatus.CANCELLED -> "Sesi dibatalkan"
-                    SessionStatus.COMPLETED -> "Lihat Riwayat Chat"
-                    else -> "Buka Ruang Chat"
+                when {
+                    s.status == SessionStatus.WAITING -> "Ruang chat terbuka setelah verifikasi"
+                    s.status == SessionStatus.CANCELLED -> "Sesi dibatalkan"
+                    confirmed && beforeStart -> "Ruang chat dibuka pukul ${s.time} WIB"
+                    roomOpen -> "Buka Ruang Chat"
+                    else -> "Lihat Riwayat Chat"
                 },
                 icon = methodIcon(s.method), container = Seiv.PrimaryDark,
-                enabled = s.status == SessionStatus.CONFIRMED || s.status == SessionStatus.COMPLETED,
+                enabled = roomOpen || s.status == SessionStatus.COMPLETED || (confirmed && now > roomCloses),
                 onClick = { nav.navigate("${Routes.CHAT}/${s.id}") },
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
             )
         } else {
             PrimaryButton(
-                if (now >= end || s.status == SessionStatus.COMPLETED) "Sesi telah selesai" else "Masuk ke Sesi",
+                when {
+                    s.status == SessionStatus.COMPLETED || now > roomCloses -> "Sesi telah selesai"
+                    confirmed && beforeStart -> "Ruang sesi dibuka pukul ${s.time} WIB"
+                    else -> "Masuk ke Sesi"
+                },
                 icon = methodIcon(s.method), container = Seiv.PrimaryDark,
-                enabled = now < end && s.status != SessionStatus.CANCELLED && s.status != SessionStatus.COMPLETED,
+                enabled = now <= roomCloses && s.status != SessionStatus.CANCELLED && s.status != SessionStatus.COMPLETED,
                 onClick = {
-                    val canOpen = s.status == SessionStatus.CONFIRMED && s.meetingUrl.isNotBlank() && now >= start - 10 * 60_000
-                    if (canOpen) {
+                    if (roomOpen && s.meetingUrl.isNotBlank()) {
                         runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(s.meetingUrl))) }
                             .onFailure { showJoin = true }
                     } else showJoin = true
@@ -1049,7 +1062,7 @@ fun SessionDetailScreen(nav: NavHostController, id: String) {
     }
     if (showJoin) {
         val verified = s.status == SessionStatus.CONFIRMED
-        val timeOk = now >= start - 10 * 60_000
+        val timeOk = now >= start
         val hasLink = s.meetingUrl.isNotBlank()
         AlertDialog(
             onDismissRequest = { showJoin = false },
@@ -1069,7 +1082,7 @@ fun SessionDetailScreen(nav: NavHostController, id: String) {
                     when {
                         !verified -> "Pembayaranmu sedang diverifikasi admin SEIV. Ruang sesi akan terbuka setelah sesi terkonfirmasi."
                         !hasLink -> "${c.name} belum mengirim tautan ${s.method.lowercase()}. Kamu akan mendapat notifikasi begitu tautannya tersedia."
-                        !timeOk -> "Ruang sesi bisa dimasuki 10 menit sebelum jadwal (${s.time} WIB). Tautan dari ${c.name} sudah siap."
+                        !timeOk -> "Ruang sesi bisa dimasuki saat jam sesi dimulai (${s.time} WIB). Tautan dari ${c.name} sudah siap."
                         else -> "Pastikan aplikasi Google Meet atau browser terpasang, lalu coba lagi."
                     },
                     fontSize = 13.sp,

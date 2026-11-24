@@ -207,7 +207,7 @@ function SessionDialog({
 
         <h3>Ruang sesi</h3>
         {s.method === "Chat" ? (
-          <ChatPanel sessionId={s.id} canSend={!isAdmin} open={s.status === "confirmed"} />
+          <ChatPanel sessionId={s.id} canSend={!isAdmin} confirmed={s.status === "confirmed"} startsAt={s.starts_at} durationMin={s.duration_min} />
         ) : (
           <div className="meet-row">
             <label style={{ flex: 1 }}>

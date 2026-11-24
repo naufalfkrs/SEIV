@@ -109,10 +109,12 @@ Untuk produksi: `npm run build` lalu deploy folder `admin/dist` ke Vercel/Netlif
 
 ## Ruang sesi konseling
 
+- Ruang sesi (chat & voice/video) hanya terbuka pada jam sesi: tepat jam mulai s.d. akhir durasi + 15 menit
+  (ditegakkan juga di server).
 - **Chat**: ruang chat di aplikasi (mahasiswa) dan panel web (konselor, real-time). Aktif saat sesi *Terkonfirmasi*,
   menjadi hanya-baca setelah selesai. Balasan konselor dikirim sebagai push notification. Admin hanya bisa membaca.
 - **Voice/Video Call**: konselor/admin menyimpan tautan Google Meet/Zoom di panel → mahasiswa mendapat notifikasi
-  dan tombol **Masuk ke Sesi** membuka tautan mulai 10 menit sebelum jadwal. Nomor pribadi tidak perlu dibagikan.
+  dan tombol **Masuk ke Sesi** membuka tautan tepat saat jam sesi dimulai. Nomor pribadi tidak perlu dibagikan.
 
 ## Alur data & privasi
 

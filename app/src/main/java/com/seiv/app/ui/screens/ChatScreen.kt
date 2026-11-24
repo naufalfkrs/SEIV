@@ -59,7 +59,13 @@ fun ChatScreen(nav: NavHostController, sessionId: String) {
     var sending by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
-    val open = s.status == SessionStatus.CONFIRMED
+    // Kirim pesan hanya pada jam sesi (sama dengan aturan server); jam berdetak agar terbuka otomatis
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { delay(1_000); now = System.currentTimeMillis() } }
+    val start = sessionStartMillis(s.dateMillis, s.time)
+    val closes = start + (SESSION_MINUTES + ROOM_GRACE_MINUTES) * 60_000L
+    val beforeStart = now < start
+    val open = s.status == SessionStatus.CONFIRMED && !beforeStart && now <= closes
 
     suspend fun reload() {
         runCatching { SeivSync.loadChat(sessionId) }
@@ -153,10 +159,12 @@ fun ChatScreen(nav: NavHostController, sessionId: String) {
             }
         } else {
             Text(
-                when (s.status) {
-                    SessionStatus.WAITING -> "Ruang chat terbuka setelah pembayaranmu diverifikasi admin."
-                    SessionStatus.COMPLETED -> "Sesi sudah selesai. Percakapan ini tersimpan untukmu."
-                    else -> "Sesi dibatalkan."
+                when {
+                    s.status == SessionStatus.WAITING -> "Ruang chat terbuka setelah pembayaranmu diverifikasi admin."
+                    s.status == SessionStatus.CANCELLED -> "Sesi dibatalkan."
+                    s.status == SessionStatus.CONFIRMED && beforeStart ->
+                        "Ruang chat dibuka pukul ${s.time} WIB, ${formatDate(s.dateMillis, "EEEE, d MMMM")}."
+                    else -> "Waktu sesi sudah berakhir. Percakapan ini tersimpan untukmu."
                 },
                 fontSize = 12.sp, color = Seiv.TextSecondary, textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().background(Color.White).padding(16.dp),

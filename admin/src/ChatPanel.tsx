@@ -12,7 +12,20 @@ interface Msg {
  * Ruang chat sesi (metode "Chat") di panel web. Konselor sesi bisa membalas;
  * admin hanya bisa membaca. Pesan baru masuk lewat Supabase Realtime (+ cadangan polling).
  */
-export default function ChatPanel({ sessionId, canSend, open }: { sessionId: string; canSend: boolean; open: boolean }) {
+/** Ruang sesi terbuka tepat jam mulai sampai akhir durasi + 15 menit (sama dengan aturan server). */
+export function roomWindow(startsAt: string, durationMin: number) {
+  const start = new Date(startsAt).getTime();
+  return { start, closes: start + (durationMin + 15) * 60_000 };
+}
+
+export default function ChatPanel({
+  sessionId, canSend, confirmed, startsAt, durationMin,
+}: { sessionId: string; canSend: boolean; confirmed: boolean; startsAt: string; durationMin: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 15_000); return () => clearInterval(t); }, []);
+  const { start, closes } = roomWindow(startsAt, durationMin);
+  const open = confirmed && now >= start && now <= closes;
+  const startText = new Date(start).toLocaleString("id-ID", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -79,7 +92,10 @@ export default function ChatPanel({ sessionId, canSend, open }: { sessionId: str
         </form>
       ) : (
         <p className="muted small">
-          {!open ? "Chat hanya aktif saat sesi berstatus Terkonfirmasi." : "Hanya konselor sesi ini yang bisa membalas."}
+          {!confirmed ? "Chat hanya aktif saat sesi berstatus Terkonfirmasi."
+            : now < start ? `Ruang chat dibuka pada jam sesi: ${startText}.`
+            : now > closes ? "Waktu sesi sudah berakhir. Riwayat chat tetap bisa dibaca."
+            : "Hanya konselor sesi ini yang bisa membalas."}
         </p>
       )}
     </div>
