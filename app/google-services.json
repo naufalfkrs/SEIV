@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "634540753583",
+    "project_id": "seiv-75661",
+    "storage_bucket": "seiv-75661.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:634540753583:android:c406c15868aaa449d64a5a",
+        "android_client_info": {
+          "package_name": "com.seiv.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCIDSGxbPO_gAnlCUjpnkuVNoQwn5A9Pu0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

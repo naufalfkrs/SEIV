@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.google.services)
 }
 
 // Konfigurasi backend dibaca dari local.properties (tidak ikut di-commit).
@@ -52,6 +53,10 @@ android {
 
 dependencies {
     testImplementation(libs.junit)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
+    // Firebase membawa fragment lama; ActivityResult API butuh >= 1.3.0
+    implementation("androidx.fragment:fragment-ktx:1.8.5")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)

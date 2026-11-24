@@ -31,7 +31,10 @@ import androidx.compose.material.icons.outlined.CenterFocusWeak
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,6 +49,7 @@ import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.seiv.app.data.SeivStore
 import com.seiv.app.data.remote.SeivSync
@@ -83,6 +87,11 @@ object Routes {
     const val PROFILE_EDIT = "profile_edit"
 }
 
+/** Rute tujuan dari notifikasi yang diketuk; diproses oleh [SeivApp]. */
+object PushRouter {
+    var pending by androidx.compose.runtime.mutableStateOf<String?>(null)
+}
+
 val TAB_ROUTES = listOf(Routes.HOME, Routes.ACTIVITY, Routes.COUNSELING, Routes.SCREENING, Routes.PROFILE)
 
 /**
@@ -118,6 +127,17 @@ fun NavHostController.resetTo(route: String) {
 @Composable
 fun SeivApp() {
     val nav = rememberNavController()
+    // Buka layar tujuan dari push notification setelah pengguna sampai di Beranda
+    val pendingRoute = PushRouter.pending
+    val currentRoute = nav.currentBackStackEntryAsState().value?.destination?.route
+    LaunchedEffect(pendingRoute, currentRoute) {
+        val r = pendingRoute ?: return@LaunchedEffect
+        if (currentRoute == null || currentRoute == Routes.SPLASH || currentRoute == Routes.LOGIN ||
+            currentRoute == Routes.ONBOARDING || currentRoute == Routes.REGISTER
+        ) return@LaunchedEffect
+        PushRouter.pending = null
+        runCatching { nav.navigate(r) }
+    }
     NavHost(
         navController = nav,
         startDestination = Routes.SPLASH,

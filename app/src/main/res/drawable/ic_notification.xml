@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ikon notifikasi (monokrom): daun SEIV -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M54,22 C74,27 82,46 74,64 C69,76 59,83 54,86 C49,83 39,76 34,64 C26,46 34,27 54,22 Z M52,36 L52,80 L56,80 L56,58 L64,52 L62,49 L56,53 L56,36 Z M52,66 L45,60 L43,63 L52,70 Z" />
+</vector>

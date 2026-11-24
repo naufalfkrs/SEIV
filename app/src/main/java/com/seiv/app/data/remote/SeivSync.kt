@@ -72,6 +72,7 @@ object SeivSync {
         }.getOrNull()
         val name = profile?.optString("name").orEmpty().ifBlank { u.name }.ifBlank { email.substringBefore("@") }
         SeivStore.login(name, email, Profile.fromJson(profile))
+        com.seiv.app.push.SeivMessagingService.syncToken()
         refresh()
     }
 
@@ -86,8 +87,28 @@ object SeivSync {
         SeivStore.updateProfile(p)
     }
 
+    // ------------------------------------------------------------------ push notification
+
+    @Volatile private var lastPushToken: String? = null
+
+    /** Kaitkan token FCM perangkat ini dengan akun yang login (lewat RPC agar token pindah akun bila HP dipakai bergantian). */
+    fun registerPushToken(token: String) {
+        lastPushToken = token
+        if (!online || !SupabaseApi.hasSession) return
+        scope.launch {
+            runCatching { SupabaseApi.rpc("register_push_token", JSONObject().put("p_token", token).put("p_platform", "android")) }
+        }
+    }
+
     fun signOut() {
-        scope.launch { if (online) SupabaseApi.signOut() }
+        val token = lastPushToken
+        scope.launch {
+            if (online) {
+                // Hentikan push ke perangkat ini sebelum sesi login dihapus
+                if (token != null) runCatching { SupabaseApi.rpc("unregister_push_token", JSONObject().put("p_token", token)) }
+                SupabaseApi.signOut()
+            }
+        }
         // Bila tersinkron ke cloud, data lokal dihapus demi privasi (mis. HP dipakai bergantian)
         SeivStore.logout(clearData = online)
     }

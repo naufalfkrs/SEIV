@@ -430,3 +430,6 @@ enabled = true
 
 [functions.companion-chat]
 verify_jwt = false  # token user diverifikasi di dalam fungsi
+
+[functions.push-notify]
+verify_jwt = false  # dipanggil trigger database; dilindungi header x-push-secret
