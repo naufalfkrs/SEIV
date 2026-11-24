@@ -12,7 +12,20 @@
           "package_name": "com.seiv.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "634540753583-5smqld7eo7u7dcmhamdhnk1oma5uchnh.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.seiv.app",
+            "certificate_hash": "1e5eaf083d4388cc2f32371df0082503e56d86b4"
+          }
+        },
+        {
+          "client_id": "634540753583-nojpl08qodc0mqh7t5e9n1vl7cvr4vev.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCIDSGxbPO_gAnlCUjpnkuVNoQwn5A9Pu0"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "634540753583-nojpl08qodc0mqh7t5e9n1vl7cvr4vev.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
