@@ -5,8 +5,11 @@
 import { createClient } from "npm:@supabase/supabase-js@2.119.2";
 
 // Bisa diganti tanpa ubah kode: npx supabase secrets set GEMINI_MODEL=<nama-model>
-// gemini-3.1-flash-lite: stabil & cepat (~1–2 detik). Alias gemini-flash-latest sempat macet >25 detik.
+// gemini-3.1-flash-lite: stabil & cepat (umumnya 2–4 detik). Alias gemini-flash-latest sempat macet >25 detik.
 const MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-3.1-flash-lite";
+// Model cadangan bila model utama lambat/penuh (bisa diganti: GEMINI_BACKUP_MODEL)
+const BACKUP_MODEL = Deno.env.get("GEMINI_BACKUP_MODEL") || "gemini-3.1-flash-lite-preview";
+const HEDGE_MS = 5_000; // jeda sebelum percobaan berikutnya bila belum ada balasan
 const MAX_HISTORY = 24; // pesan terakhir yang dikirim ke model
 const MAX_CHARS = 2000; // panjang maksimum per pesan
 
@@ -16,6 +19,7 @@ Peranmu:
 - Menjadi ruang aman: dengarkan, validasi perasaan, dan tanggapi dengan hangat, empatik, dan tidak menghakimi.
 - Gunakan bahasa Indonesia santai yang sopan (aku/kamu), seperti teman yang peduli. Boleh memakai emoji secukupnya (maksimal satu per pesan).
 - Jawab singkat: 2–4 kalimat. Biasanya akhiri dengan satu pertanyaan terbuka yang membantu pengguna bercerita lebih jauh. Jangan memberi daftar panjang kecuali diminta.
+- Tulis sebagai teks biasa seperti pesan chat: jangan memakai format markdown (tanpa tanda *, **, _, #, atau daftar berpoin), karena aplikasi menampilkan teks apa adanya.
 - Kamu boleh menawarkan teknik sederhana yang aman (napas 4-7-8, grounding 5-4-3-2-1, menulis jurnal, memecah tugas jadi langkah kecil, istirahat) bila relevan.
 - Kamu BUKAN psikolog atau dokter. Jangan mendiagnosis, jangan menyebut nama gangguan sebagai label untuk pengguna, dan jangan memberi saran obat.
 - Bila keluhan terdengar berat, berlangsung lama, atau mengganggu kuliah/aktivitas, sarankan dengan lembut fitur Skrining dan Konseling di aplikasi SEIV (nurse counselor & psikolog).
@@ -111,38 +115,78 @@ Deno.serve(async (req) => {
   const name = (payload.name ?? "").slice(0, 40).replace(/[^\p{L}\p{N} .'-]/gu, "");
   const system = name ? `${SYSTEM_PROMPT}\n\nNama panggilan pengguna: ${name}.` : SYSTEM_PROMPT;
 
-  let res: Response;
-  try {
-    res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`,
+  // Satu permintaan ke Gemini; melempar error (berisi status) bila gagal agar bisa dicoba model lain.
+  const body = JSON.stringify({
+    systemInstruction: { parts: [{ text: system }] },
+    contents,
+    // Chat ringan: tanpa "thinking" (minimal) agar balasan secepat mungkin
+    generationConfig: { maxOutputTokens: 1024, thinkingConfig: { thinkingLevel: "minimal" } },
+  });
+  const cancel = new AbortController();
+  type Attempt = { model: string; status: number; data: GeminiResponse };
+  const call = async (model: string): Promise<Attempt> => {
+    const s = Date.now();
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-        signal: AbortSignal.timeout(40_000),
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: system }] },
-          contents,
-          // Chat ringan: batasi "thinking" agar balasan cepat
-          generationConfig: { maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: "low" } },
-        }),
+        signal: AbortSignal.any([cancel.signal, AbortSignal.timeout(35_000)]),
+        body,
       },
     );
-  } catch (error) {
-    console.error("Gagal menghubungi Gemini:", error);
-    return json({ error: "Layanan AI sedang bermasalah." }, 502);
-  }
+    const data: GeminiResponse = await res.json().catch(() => ({}));
+    console.log(`gemini ${model} status ${res.status} ${Date.now() - s}ms finish=${data.candidates?.[0]?.finishReason}`);
+    const attempt = { model, status: res.status, data };
+    if (!res.ok) throw Object.assign(new Error(data.error?.message ?? `HTTP ${res.status}`), { attempt });
+    return attempt;
+  };
 
-  const data: GeminiResponse = await res.json().catch(() => ({}));
-  console.log(`gemini ${MODEL} status ${res.status} ${Date.now() - t0}ms finish=${data.candidates?.[0]?.finishReason}`);
-  if (!res.ok) {
-    const msg = data.error?.message ?? "";
-    console.error(`Gemini API error ${res.status}:`, msg);
-    if (res.status === 429) return json({ error: "Terlalu banyak permintaan, coba sebentar lagi." }, 429);
-    if (res.status === 401 || res.status === 403 || /api key/i.test(msg)) {
+  // Server Gemini kadang lambat/penuh (503 "high demand"). Kirim percobaan bertahap:
+  // model utama → model cadangan → ulang model utama. Percobaan berikutnya dimulai begitu
+  // yang sebelumnya gagal atau setelah HEDGE_MS; balasan yang selesai duluan dipakai.
+  const plan = [MODEL, BACKUP_MODEL, MODEL];
+  /** Jalankan percobaan ke-i; hasilnya = yang tercepat berhasil di antara percobaan i dan seterusnya. */
+  const launch = (i: number): Promise<Attempt> => {
+    const p = call(plan[i]);
+    if (i + 1 >= plan.length) return p;
+    const rest = new Promise<Attempt>((resolve, reject) => {
+      let started = false;
+      const start = () => {
+        if (started) return;
+        started = true;
+        launch(i + 1).then(resolve, reject);
+      };
+      const timer = setTimeout(start, HEDGE_MS);
+      p.then(
+        () => { if (!started) { clearTimeout(timer); reject(new Error("tidak diperlukan")); } },
+        () => { clearTimeout(timer); start(); },
+      );
+    });
+    return Promise.any([p, rest]);
+  };
+
+  let result: Attempt;
+  try {
+    result = await launch(0);
+  } catch (error) {
+    // AggregateError bisa bertingkat (satu per percobaan berantai): ratakan
+    const flat = (e: unknown): unknown[] => (e instanceof AggregateError ? e.errors.flatMap(flat) : [e]);
+    const attempts = flat(error)
+      .map((e) => (e as { attempt?: Attempt }).attempt).filter((a): a is Attempt => !!a);
+    console.error("Semua percobaan Gemini gagal:", String(error), attempts.map((a) => `${a.model}:${a.status}`).join(","));
+    if (attempts.some((a) => a.status === 401 || a.status === 403 || /api key/i.test(a.data.error?.message ?? ""))) {
       return json({ error: "Layanan AI belum dikonfigurasi." }, 503);
     }
-    return json({ error: "Layanan AI sedang bermasalah." }, 502);
+    if (attempts.length && attempts.every((a) => a.status === 429)) {
+      return json({ error: "Terlalu banyak permintaan, coba sebentar lagi." }, 429);
+    }
+    return json({ error: "Layanan AI sedang sibuk. Coba lagi sebentar." }, 502);
+  } finally {
+    cancel.abort(); // hentikan permintaan yang kalah cepat
   }
+  console.log(`balasan dari ${result.model} total ${Date.now() - t0}ms`);
+  const data = result.data;
 
   // Diblokir oleh filter keamanan Gemini → balasan aman + arahkan ke bantuan
   const candidate = data.candidates?.[0];

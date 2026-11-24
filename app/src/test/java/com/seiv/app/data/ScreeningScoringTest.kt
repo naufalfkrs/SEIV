@@ -109,4 +109,12 @@ class ScreeningScoringTest {
         assertEquals(0, r.cdrisc)
         assertEquals(Severity.RESILIEN_RENDAH, cdriscSeverity(r.cdrisc!!))
     }
+
+    @Test fun cdriscReferenceMeans() {
+        // Rerata acuan Yan et al. 2023: 24,85 (gejala PTSD) dan 32,36 (tanpa PTSD)
+        assertEquals(Severity.RESILIEN_RENDAH, cdriscSeverity(24))
+        assertEquals(Severity.RESILIEN_SEDANG, cdriscSeverity(25))
+        assertEquals(Severity.RESILIEN_SEDANG, cdriscSeverity(32))
+        assertEquals(Severity.RESILIEN_TINGGI, cdriscSeverity(33))
+    }
 }

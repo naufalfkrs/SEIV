@@ -228,7 +228,7 @@ private operator fun <T> List<T>.component6() = this[5]
 //  PHQ-9 & GAD-7 : University of Washington, Mental Health Screening (hiv.uw.edu)
 //  ASQ           : NIMH ASQ Suicide Risk Screening Tool (2025)
 //  CAPE-P15      : Núñez et al. 2021, PLoS One (PMC8389461) — cut-off rata-rata 1,47
-//  CD-RISC-10    : 0–4 per butir, total 0–40 (makin tinggi makin resilien)
+//  CD-RISC-10    : Yan et al. 2023 (J Affect Disord Rep) — 0–4 per butir, total 0–40; rerata acuan 24,85 / 32,36
 // ---------------------------------------------------------------------------
 
 enum class Severity(val label: String, val level: Int) {
@@ -279,11 +279,17 @@ const val CAPE_CUTOFF = 1.47
 fun capeMean(total: Int) = total / 15.0
 fun capeSeverity(total: Int) = if (capeMean(total) >= CAPE_CUTOFF) Severity.CAPE_POSITIF else Severity.CAPE_NEGATIF
 
-/** CD-RISC-10 (0–40): makin tinggi makin resilien. Pembagian kategori masih sementara. */
+/**
+ * CD-RISC-10 (Yan et al. 2023, bag. 2.2): butir 0 "sama sekali tidak benar" – 4 "hampir selalu benar",
+ * total 0–40, makin tinggi makin mampu menghadapi kesulitan. Artikel tidak memberi cut-off; kategori
+ * memakai rerata acuan artikel: kelompok tanpa PTSD 32,36 (SD 7,20) dan dengan gejala PTSD 24,85 (SD 7,54).
+ */
+const val CDRISC_REF_HEALTHY = 32.36
+const val CDRISC_REF_PTSD = 24.85
 fun cdriscSeverity(score: Int) = when {
-    score >= 33 -> Severity.RESILIEN_TINGGI
-    score >= 26 -> Severity.RESILIEN_SEDANG
-    else -> Severity.RESILIEN_RENDAH
+    score > CDRISC_REF_HEALTHY -> Severity.RESILIEN_TINGGI   // ≥ 33: di atas rerata kelompok tanpa PTSD
+    score > CDRISC_REF_PTSD -> Severity.RESILIEN_SEDANG      // 25–32: di antara kedua rerata acuan
+    else -> Severity.RESILIEN_RENDAH                         // ≤ 24: setara/di bawah rerata kelompok dgn gejala PTSD
 }
 
 fun srqDescription(score: Int) = if (score >= 6)
@@ -327,10 +333,10 @@ fun capeDescription(total: Int) = if (capeSeverity(total) == Severity.CAPE_POSIT
 else "Rata-rata skormu ${"%.2f".format(capeMean(total))} (< ${"%.2f".format(CAPE_CUTOFF)}). Pengalaman psikologis tidak biasa jarang kamu alami."
 
 fun cdriscDescription(score: Int) = when (cdriscSeverity(score)) {
-    Severity.RESILIEN_TINGGI -> "Resiliensimu tinggi — kamu cenderung mampu bangkit dari tekanan. Pertahankan!"
-    Severity.RESILIEN_SEDANG -> "Resiliensimu cukup baik. Dukungan sosial dan kebiasaan sehat bisa memperkuatnya."
-    else -> "Resiliensimu sedang menurun. Latihan kecil seperti jurnal, napas, dan bercerita bisa membantumu lebih kuat."
-}
+    Severity.RESILIEN_TINGGI -> "Resiliensimu tinggi — di atas rerata acuan (32,36). Kamu cenderung mampu bangkit dari tekanan. Pertahankan!"
+    Severity.RESILIEN_SEDANG -> "Resiliensimu sedang — di antara rerata acuan (24,85–32,36). Dukungan sosial dan kebiasaan sehat bisa memperkuatnya."
+    else -> "Resiliensimu rendah — setara atau di bawah rerata kelompok yang mengalami gejala stres pascatrauma (24,85). Latihan kecil seperti jurnal, napas, dan bercerita, serta dukungan konselor, bisa membantumu lebih kuat."
+} + " (Skor tinggi = lebih mampu menghadapi kesulitan; ini bukan diagnosis.)"
 
 /** Tingkat kebutuhan bantuan: 0 = promotif, 1 = preventif, 2 = kuratif (konseling), 3 = segera/darurat. */
 fun ScreeningResult.careLevel(): Int = when {

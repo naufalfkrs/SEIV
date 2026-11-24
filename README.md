@@ -43,6 +43,10 @@ API key Gemini hanya tersimpan di server Supabase, **tidak pernah** masuk ke APK
 `npx supabase secrets set GEMINI_MODEL=<nama-model>` (daftar di <https://ai.google.dev/gemini-api/docs/models>).
 Bila filter keamanan Gemini memblokir balasan, aplikasi menampilkan pesan aman beserta nomor hotline.
 
+Kecepatan: model dipanggil tanpa *thinking* (`thinkingLevel: minimal`). Server Gemini kadang penuh (503 "high demand"),
+jadi fungsi mengirim percobaan bertahap — model utama → `GEMINI_BACKUP_MODEL` (bawaan `gemini-3.1-flash-lite-preview`) →
+ulang model utama — tiap 5 detik atau segera setelah gagal, dan memakai balasan yang selesai duluan.
+
 ### Akun admin pertama
 
 Daftar lewat aplikasi (atau Authentication → Add user), lalu jalankan di SQL Editor:
@@ -124,7 +128,7 @@ Urutan: **SRQ-20 → PHQ-9 → GAD-7 → ASQ → CAPE-15 → CD-RISC-10**. Butir
 | GAD-7 | 0–21 (butir 0–3) | 0–4 minimal · 5–9 ringan · 10–14 sedang · 15–21 berat; ≥8 → perlu asesmen lanjutan | [UW](https://www.hiv.uw.edu/page/mental-health-screening/gad-7) |
 | ASQ | butir 1–4 Ya/Tidak + butir akut | semua "Tidak" = negatif · "Ya" di 1–4 & akut "Tidak" = positif non-akut · akut "Ya" = positif akut | [NIMH ASQ](https://www.nimh.nih.gov/research/research-conducted-at-nimh/asq-toolkit-materials) |
 | CAPE-15 (CAPE-P15) | 15–75 (butir 1–5), dirata-rata | rata-rata ≥ 1,47 = positif; domain: ide paranoid (1–5), pengalaman aneh (6–12), anomali persepsi (13–15) | [Núñez et al. 2021](https://pmc.ncbi.nlm.nih.gov/articles/PMC8389461/) |
-| CD-RISC-10 | 0–40 (butir 0–4) | makin tinggi makin resilien; kategori ≥33 tinggi · 26–32 sedang · ≤25 rendah masih *sementara* | [Yan et al. 2023](https://doi.org/10.1016/j.jadr.2023.100666) — bagian 2.2 belum terverifikasi |
+| CD-RISC-10 | 0–40 (butir 0–4) | makin tinggi makin mampu menghadapi kesulitan. Artikel tidak memberi cut-off; kategori memakai rerata acuan artikel: ≥33 tinggi (di atas rerata tanpa PTSD 32,36) · 25–32 sedang · ≤24 rendah (setara/di bawah rerata kelompok bergejala PTSD 24,85) | [Yan et al. 2023](https://doi.org/10.1016/j.jadr.2023.100666), bag. 2.2 & 3.3 |
 
 Butir "tingkat kesulitan" PHQ-9/GAD-7 dicatat tetapi tidak dihitung ke skor (sesuai sumber). Uji otomatis aturan
 scoring: `./gradlew :app:testDebugUnitTest` (`ScreeningScoringTest`).
