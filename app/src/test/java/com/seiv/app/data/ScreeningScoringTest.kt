@@ -110,6 +110,22 @@ class ScreeningScoringTest {
         assertEquals(Severity.RESILIEN_RENDAH, cdriscSeverity(r.cdrisc!!))
     }
 
+    @Test fun srqScoreAndSubscales() {
+        // Pedoman SRQ-20: Ya = 1; ≥6 "Ya" = gangguan mental emosional
+        val a = base(); listOf(3, 4, 5, 8, 12, 13).forEach { a[0][it - 1] = 1 }
+        val r = scoreScreening(a)
+        assertEquals(6, r.srq)
+        assertEquals(Severity.INDIKASI, srqSeverity(r.srq))
+        assertEquals(Severity.NORMAL, srqSeverity(5))
+        val sub = srqSubscales(r.srqItems!!).associate { it.first to (it.second to it.third) }
+        assertEquals(3 to 3, sub["Cemas"])                     // butir 3,4,5
+        assertEquals(3 to 3, sub["Berpikir & konsentrasi"])    // butir 8,12,13
+        assertEquals(3 to 6, sub["Energi"])                    // 8,12,13 dari 8,11,12,13,18,20
+        assertEquals(0 to 7, sub["Suasana hati"])
+        assertEquals(0 to 4, sub["Keluhan fisik"])
+        assertEquals(2, r.careLevel())
+    }
+
     @Test fun cdriscReferenceMeans() {
         // Rerata acuan Yan et al. 2023: 24,85 (gejala PTSD) dan 32,36 (tanpa PTSD)
         assertEquals(Severity.RESILIEN_RENDAH, cdriscSeverity(24))

@@ -203,6 +203,7 @@ fun scoreScreening(answers: List<List<Int?>>): ScreeningResult {
     val (srq, phq, gad, asq, cape, cd) = answers
     return ScreeningResult(
         srq = srq.count { it == 1 },
+        srqItems = srq.foldIndexed(0) { i, acc, v -> if (v == 1) acc or (1 shl i) else acc },
         phq = phq.take(9).sumOf { it ?: 0 },
         gad = gad.take(7).sumOf { it ?: 0 },
         phqItem9 = phq[8] ?: 0,
@@ -225,6 +226,7 @@ private operator fun <T> List<T>.component6() = this[5]
 
 // ---------------------------------------------------------------------------
 // Interpretasi — mengikuti sumber resmi tiap instrumen:
+//  SRQ-20        : Pedoman SRQ-20 / Riskesdas — Ya = 1; ≥6 "Ya" = gangguan mental emosional; 5 subskala
 //  PHQ-9 & GAD-7 : University of Washington, Mental Health Screening (hiv.uw.edu)
 //  ASQ           : NIMH ASQ Suicide Risk Screening Tool (2025)
 //  CAPE-P15      : Núñez et al. 2021, PLoS One (PMC8389461) — cut-off rata-rata 1,47
@@ -234,12 +236,28 @@ private operator fun <T> List<T>.component6() = this[5]
 enum class Severity(val label: String, val level: Int) {
     NORMAL("Normal", 0), MINIMAL("Minimal", 0), RINGAN("Ringan", 1), SEDANG("Sedang", 2),
     SEDANG_BERAT("Sedang-berat", 3), BERAT("Berat", 3), INDIKASI("Ada indikasi", 2),
-    NEGATIF("Negatif", 0), POSITIF("Positif non-akut", 3), AKUT("Positif akut", 3),
-    CAPE_NEGATIF("Negatif", 0), CAPE_POSITIF("Positif", 2),
+    // Label yang tampil ke pengguna: bahasa awam, tanpa istilah teknis
+    NEGATIF("Tidak berisiko", 0), POSITIF("Perlu perhatian", 3), AKUT("Butuh bantuan segera", 3),
+    CAPE_NEGATIF("Jarang dialami", 0), CAPE_POSITIF("Cukup sering", 2),
     RESILIEN_TINGGI("Tinggi", 0), RESILIEN_SEDANG("Sedang", 0), RESILIEN_RENDAH("Rendah", 1),
 }
 
+/** SRQ-20 (Riskesdas): menjawab "Ya" pada ≥6 butir = gangguan mental emosional/distres. */
 fun srqSeverity(score: Int) = if (score >= 6) Severity.INDIKASI else Severity.NORMAL
+
+/** Subskala SRQ-20 menurut pedoman (nomor butir 1-based). */
+val SRQ_SUBSCALES = listOf(
+    "Suasana hati" to listOf(6, 9, 10, 14, 15, 16, 17),
+    "Cemas" to listOf(3, 4, 5),
+    "Keluhan fisik" to listOf(1, 2, 7, 19),
+    "Berpikir & konsentrasi" to listOf(8, 12, 13),
+    "Energi" to listOf(8, 11, 12, 13, 18, 20),
+)
+
+/** Jumlah "Ya" per subskala: (nama, jumlah Ya, jumlah butir). */
+fun srqSubscales(items: Int): List<Triple<String, Int, Int>> = SRQ_SUBSCALES.map { (name, nums) ->
+    Triple(name, nums.count { items and (1 shl (it - 1)) != 0 }, nums.size)
+}
 
 /** PHQ-9: 0–4 tidak ada–minimal · 5–9 ringan · 10–14 sedang · 15–19 sedang-berat · 20–27 berat. */
 fun phqSeverity(score: Int) = when {
@@ -292,20 +310,27 @@ fun cdriscSeverity(score: Int) = when {
     else -> Severity.RESILIEN_RENDAH                         // ≤ 24: setara/di bawah rerata kelompok dgn gejala PTSD
 }
 
-fun srqDescription(score: Int) = if (score >= 6)
-    "Ada indikasi gangguan mental emosional. Sebaiknya bicarakan kondisimu dengan tenaga profesional."
-else "Kondisi mentalmu secara umum tampak baik. Tetap jaga keseimbangan hidup dan rutinitas positifmu."
+fun srqDescription(score: Int, items: Int? = null): String {
+    val base = if (score >= 6)
+        "Kamu mengalami cukup banyak keluhan dalam sebulan terakhir — tanda adanya gangguan mental emosional atau stres yang sebaiknya dibicarakan dengan tenaga profesional."
+    else "Keluhanmu dalam sebulan terakhir masih sedikit. Kondisimu secara umum tampak baik — tetap jaga rutinitas positifmu."
+    if (items == null) return base
+    val felt = srqSubscales(items).filter { it.second > 0 }
+    return if (felt.isEmpty()) base
+    else base + "\n\nKeluhan yang kamu rasakan: " + felt.sortedByDescending { it.second.toFloat() / it.third }
+        .joinToString(" · ") { "${it.first.lowercase()} (${it.second} dari ${it.third})" } + "."
+}
 
 /** Deskripsi + tindak lanjut yang disarankan (UW). */
 fun phqDescription(score: Int, item9: Int = 0): String {
     val base = when (phqSeverity(score)) {
         Severity.MINIMAL -> "Gejala depresi tidak ada atau minimal. Tidak perlu tindakan khusus — terus rawat dirimu."
-        Severity.RINGAN -> "Gejala depresi ringan. Disarankan memantau kondisi dan mengulang skrining PHQ-9 di waktu mendatang."
+        Severity.RINGAN -> "Gejala depresi ringan. Pantau suasana hatimu lewat check-in harian dan ulangi skrining beberapa minggu lagi."
         Severity.SEDANG -> "Gejala depresi sedang. Disarankan menyusun rencana penanganan, misalnya konseling dan tindak lanjut berkala."
-        Severity.SEDANG_BERAT -> "Gejala depresi sedang-berat. Disarankan penanganan aktif bersama tenaga profesional (psikoterapi dan/atau medis)."
-        else -> "Gejala depresi berat. Disarankan segera mendapat penanganan dan rujukan ke tenaga kesehatan jiwa."
+        Severity.SEDANG_BERAT -> "Gejala depresi cukup berat. Sebaiknya kamu mendapat pendampingan aktif dari psikolog atau tenaga kesehatan jiwa."
+        else -> "Gejala depresi berat. Segera temui psikolog, psikiater, atau tenaga kesehatan jiwa untuk mendapat penanganan."
     }
-    return if (item9 > 0) "$base Jawabanmu pada butir 9 menunjukkan pikiran menyakiti diri — perlu penilaian risiko bunuh diri oleh tenaga yang kompeten."
+    return if (item9 > 0) "$base Kamu juga menyebut pernah berpikir lebih baik mati atau ingin melukai diri — mohon bicarakan ini dengan konselor atau tenaga profesional secepatnya."
     else base
 }
 
@@ -316,27 +341,36 @@ fun gadDescription(score: Int): String {
         Severity.SEDANG -> "Kecemasan sedang. Pertimbangkan untuk berbicara dengan konselor."
         else -> "Kecemasan berat. Sangat disarankan berkonsultasi dengan tenaga profesional."
     }
-    return if (score >= GAD_FURTHER_ASSESSMENT) "$base Skor ≥ 8 menandakan kemungkinan gangguan kecemasan umum, sehingga perlu asesmen lanjutan."
+    return if (score >= GAD_FURTHER_ASSESSMENT && gadSeverity(score) != Severity.BERAT) "$base Rasa cemasmu cukup sering muncul, jadi sebaiknya diperiksa lebih lanjut bersama konselor."
     else base
 }
 
 fun asqDescription(r: ScreeningResult) = when (asqSeverity(r)) {
-    Severity.AKUT -> "Positif akut — ada risiko keselamatan saat ini. Segera hubungi SEJIWA 119 ext. 8, 112, atau orang terdekat; kamu perlu evaluasi keselamatan dan kesehatan jiwa sesegera mungkin."
+    Severity.AKUT -> "Saat ini kamu sedang memiliki pikiran untuk mengakhiri hidup. Keselamatanmu yang paling penting — hubungi SEJIWA 119 ext. 8, 112, atau orang terdekat sekarang juga."
     Severity.POSITIF -> if (asqOnlyPastAttempt(r))
-        "Positif non-akut karena riwayat percobaan lebih dari 1 tahun lalu. Tetap disarankan berbicara dengan konselor untuk memastikan kamu mendapat dukungan yang tepat."
-    else "Positif non-akut — ada potensi risiko. Kamu perlu penilaian keselamatan singkat oleh tenaga profesional untuk menentukan langkah selanjutnya. Jangan tunda untuk menghubungi konselor."
-    else -> "Negatif — tidak ditemukan risiko bunuh diri pada skrining ini."
+        "Kamu pernah melewati masa yang sangat berat lebih dari setahun lalu. Tetap baik untuk bercerita ke konselor agar kamu mendapat dukungan yang tepat."
+    else "Ada tanda kamu sedang menyimpan pikiran yang berat. Kamu tidak perlu menghadapinya sendiri — mohon segera bicara dengan konselor atau tenaga profesional."
+    else -> "Tidak ditemukan tanda risiko keselamatan pada jawabanmu."
 }
 
 fun capeDescription(total: Int) = if (capeSeverity(total) == Severity.CAPE_POSITIF)
-    "Rata-rata skormu ${"%.2f".format(capeMean(total))} (≥ ${"%.2f".format(CAPE_CUTOFF)}). Beberapa pengalaman psikologis tidak biasa cukup sering kamu alami — ini bukan diagnosis, namun sebaiknya ditinjau lebih lanjut bersama tenaga profesional."
-else "Rata-rata skormu ${"%.2f".format(capeMean(total))} (< ${"%.2f".format(CAPE_CUTOFF)}). Pengalaman psikologis tidak biasa jarang kamu alami."
+    "Beberapa pengalaman tidak biasa (misalnya merasa dicurigai, pikiran terasa aneh, atau mendengar/melihat sesuatu) cukup sering kamu alami. Ini bukan diagnosis, tapi sebaiknya dibicarakan dengan tenaga profesional."
+else "Pengalaman tidak biasa seperti merasa dicurigai atau mendengar/melihat sesuatu yang tidak dialami orang lain jarang kamu alami."
+
+/** Frekuensi rata-rata (skala 1–5) dalam bahasa awam. */
+fun capeFrequencyWord(mean: Double) = when {
+    mean < 1.5 -> "tidak pernah"
+    mean < 2.5 -> "jarang"
+    mean < 3.5 -> "kadang-kadang"
+    mean < 4.5 -> "sering"
+    else -> "sangat sering"
+}
 
 fun cdriscDescription(score: Int) = when (cdriscSeverity(score)) {
-    Severity.RESILIEN_TINGGI -> "Resiliensimu tinggi — di atas rerata acuan (32,36). Kamu cenderung mampu bangkit dari tekanan. Pertahankan!"
-    Severity.RESILIEN_SEDANG -> "Resiliensimu sedang — di antara rerata acuan (24,85–32,36). Dukungan sosial dan kebiasaan sehat bisa memperkuatnya."
-    else -> "Resiliensimu rendah — setara atau di bawah rerata kelompok yang mengalami gejala stres pascatrauma (24,85). Latihan kecil seperti jurnal, napas, dan bercerita, serta dukungan konselor, bisa membantumu lebih kuat."
-} + " (Skor tinggi = lebih mampu menghadapi kesulitan; ini bukan diagnosis.)"
+    Severity.RESILIEN_TINGGI -> "Kamu cenderung mampu bangkit dan beradaptasi saat menghadapi tekanan. Pertahankan!"
+    Severity.RESILIEN_SEDANG -> "Kemampuanmu menghadapi tekanan cukup baik. Dukungan teman dan kebiasaan sehat bisa membuatmu makin kuat."
+    else -> "Saat ini kamu mungkin merasa sulit bangkit dari tekanan. Latihan kecil seperti jurnal, napas, bercerita, dan dukungan konselor bisa membantumu lebih kuat."
+}
 
 /** Tingkat kebutuhan bantuan: 0 = promotif, 1 = preventif, 2 = kuratif (konseling), 3 = segera/darurat. */
 fun ScreeningResult.careLevel(): Int = when {

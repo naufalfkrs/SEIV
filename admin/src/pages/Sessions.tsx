@@ -20,7 +20,7 @@ interface ClientData {
   screenings: ScreeningRow[];
 }
 
-const SCREENING_COLUMNS = "created_at, srq, gad, phq, phq_item9, asq, asq_acute, asq_attempt, cape, cape_frequent, cdrisc";
+const SCREENING_COLUMNS = "created_at, srq, gad, phq, phq_item9, asq, asq_acute, asq_attempt, cape, cape_frequent, cdrisc, srq_items";
 
 export default function Sessions({ isAdmin }: { isAdmin: boolean }) {
   const [rows, setRows] = useState<SessionRow[]>([]);
