@@ -130,6 +130,13 @@ function SessionDialog({
   const [client, setClient] = useState<ClientData | null>(null);
   const [clientError, setClientError] = useState<string | null>(null);
   const [profile, setProfile] = useState<Partial<Profile> | null>(null);
+  const [review, setReview] = useState<{ rating: number; comment: string } | null>(null);
+
+  useEffect(() => {
+    if (s.status !== "completed") return;
+    supabase.from("reviews").select("rating, comment").eq("session_id", s.id).maybeSingle()
+      .then(({ data }) => setReview(data as { rating: number; comment: string } | null));
+  }, [s.id, s.status]);
 
   useEffect(() => {
     // Data diri mahasiswa (RLS: admin & konselor yang menangani sesi ini)
@@ -166,6 +173,17 @@ function SessionDialog({
           <dt>Cerita mahasiswa</dt><dd>{s.note || <span className="muted">—</span>}</dd>
           <dt>Berbagi data</dt><dd>{s.share_check_in ? "Ya, ringkasan check-in & skrining dibagikan" : "Tidak"}</dd>
         </dl>
+
+        {s.status === "completed" && (
+          <>
+            <h3>Ulasan mahasiswa</h3>
+            {review ? (
+              <div className="mini">
+                {"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)} {review.comment && <span>— “{review.comment}”</span>}
+              </div>
+            ) : <p className="muted small">Belum ada ulasan.</p>}
+          </>
+        )}
 
         <h3>Data diri mahasiswa</h3>
         {profile ? <ProfileDetails p={profile} /> : <p className="muted small">Memuat…</p>}

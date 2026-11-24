@@ -18,6 +18,7 @@ import androidx.compose.material.icons.outlined.HourglassTop
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.SentimentSatisfied
+import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -256,10 +257,16 @@ fun buildNotifications(): List<Notif> {
                     "Sesimu segera dimulai", "Jangan lupa, sesi dengan ${c.name} dimulai $whenText.", start - 24 * 3600_000L, route,
                 )
             }
-            SessionStatus.COMPLETED -> list += Notif(
-                "s-${s.id}-completed", Icons.Outlined.TaskAlt, Seiv.Purple, Seiv.PurpleSoft,
-                "Sesi selesai", "Terima kasih sudah hadir di sesi dengan ${c.name}. Jaga dirimu, ya!", start, route,
-            )
+            SessionStatus.COMPLETED -> {
+                list += Notif(
+                    "s-${s.id}-completed", Icons.Outlined.TaskAlt, Seiv.Purple, Seiv.PurpleSoft,
+                    "Sesi selesai", "Terima kasih sudah hadir di sesi dengan ${c.name}. Jaga dirimu, ya!", start, route,
+                )
+                if (SeivStore.reviewFor(s.id) == null) list += Notif(
+                    "s-${s.id}-review", Icons.Outlined.StarOutline, Seiv.Orange, Seiv.OrangeSoft,
+                    "Bagaimana sesimu?", "Beri ulasan untuk ${c.name} agar mahasiswa lain terbantu memilih konselor.", start + 1, route,
+                )
+            }
             SessionStatus.CANCELLED -> list += Notif(
                 "s-${s.id}-cancelled", Icons.Outlined.Cancel, Seiv.Red, Seiv.RedSoft,
                 "Sesi dibatalkan", "Sesi dengan ${c.name} ($whenText) dibatalkan. Hubungi admin SEIV bila ada pertanyaan.", s.createdAt + 2, route,

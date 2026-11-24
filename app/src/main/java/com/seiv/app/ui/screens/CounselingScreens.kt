@@ -51,6 +51,7 @@ import com.seiv.app.data.COUNSELORS
 import com.seiv.app.data.Counselor
 import com.seiv.app.data.PLATFORM_FEE
 import com.seiv.app.data.SeivStore
+import com.seiv.app.data.Review
 import com.seiv.app.data.Session
 import com.seiv.app.data.SessionStatus
 import com.seiv.app.data.counselorById
@@ -62,6 +63,7 @@ import com.seiv.app.ui.components.*
 import com.seiv.app.ui.goTab
 import com.seiv.app.ui.theme.Seiv
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.Calendar
 import kotlin.random.Random
 
@@ -162,7 +164,10 @@ fun CounselingScreen(nav: NavHostController) {
             StatTile("$done", "Sesi Selesai", Seiv.Primary, Modifier.weight(1f))
             StatTile("${upcoming.size}", "Jadwal Aktif", Seiv.Orange, Modifier.weight(1f))
             // Rata-rata rating konselor SEIV (data konselor dari server)
-            val avgRating = SeivStore.counselors.map { it.rating }.average().takeIf { !it.isNaN() }
+            // Rata-rata tertimbang jumlah ulasan; "-" bila belum ada ulasan sama sekali
+            val totalReviews = SeivStore.counselors.sumOf { it.reviews }
+            val avgRating = if (totalReviews == 0) null
+            else SeivStore.counselors.sumOf { it.rating * it.reviews } / totalReviews
             StatTile(avgRating?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "-", "Rating Konselor", Seiv.Purple, Modifier.weight(1f))
         }
 
@@ -324,9 +329,13 @@ private fun CounselorCard(c: Counselor, onClick: () -> Unit) {
                 Text(c.name, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Seiv.Text)
                 Text(c.role, fontSize = 11.sp, color = Seiv.TextSecondary)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Star, null, tint = Seiv.Yellow, modifier = Modifier.size(13.dp))
-                    Text(" ${c.rating}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Seiv.Text)
-                    Text(" (${c.reviews})", fontSize = 11.sp, color = Seiv.TextHint)
+                    if (c.reviews > 0) {
+                        Icon(Icons.Filled.Star, null, tint = Seiv.Yellow, modifier = Modifier.size(13.dp))
+                        Text(" ${c.rating}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Seiv.Text)
+                        Text(" (${c.reviews} ulasan)", fontSize = 11.sp, color = Seiv.TextHint)
+                    } else {
+                        Text("Belum ada ulasan", fontSize = 11.sp, color = Seiv.TextHint)
+                    }
                     Spacer(Modifier.width(8.dp))
                     Text(rupiah(c.price), fontSize = 11.sp, color = Seiv.Primary, fontWeight = FontWeight.SemiBold)
                 }
@@ -815,6 +824,74 @@ fun PaymentSuccessScreen(nav: NavHostController, id: String) {
     }
 }
 
+/** Form ulasan (1–5 bintang + komentar) untuk sesi yang sudah selesai; bisa diubah setelah dikirim. */
+@Composable
+private fun ReviewSection(s: Session, c: Counselor) {
+    val existing = SeivStore.reviewFor(s.id)
+    var editing by remember(existing) { mutableStateOf(existing == null) }
+    var rating by remember(existing) { mutableIntStateOf(existing?.rating ?: 0) }
+    var comment by remember(existing) { mutableStateOf(existing?.comment.orEmpty()) }
+    var sending by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val words = listOf("", "Kurang membantu", "Cukup", "Baik", "Sangat baik", "Luar biasa")
+
+    SeivCard(Modifier.fillMaxWidth(), color = if (editing) Color.White else Seiv.YellowSoft) {
+        Text(
+            if (existing == null) "Bagaimana sesimu dengan ${c.name}?" else "Ulasanmu",
+            fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Seiv.Text,
+        )
+        if (existing == null) {
+            Text("Ulasanmu membantu mahasiswa lain memilih konselor. Identitasmu tidak ditampilkan.", fontSize = 11.sp, color = Seiv.TextSecondary, lineHeight = 15.sp)
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            (1..5).forEach { i ->
+                Icon(
+                    if (i <= rating) Icons.Filled.Star else Icons.Outlined.StarOutline, "Bintang $i",
+                    tint = if (i <= rating) Seiv.Yellow else Seiv.TextHint,
+                    modifier = Modifier.size(34.dp).clip(CircleShape).clickable(enabled = editing) { rating = i }.padding(2.dp),
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(words[rating], fontSize = 12.sp, color = Seiv.TextSecondary)
+        }
+        if (editing) {
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = comment, onValueChange = { if (it.length <= 500) comment = it }, modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Ceritakan pengalamanmu (opsional)", fontSize = 12.sp) }, minLines = 2,
+                shape = RoundedCornerShape(12.dp), textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 13.sp),
+            )
+            error?.let { Text(it, fontSize = 11.sp, color = Seiv.Red, modifier = Modifier.padding(top = 6.dp)) }
+            Spacer(Modifier.height(10.dp))
+            PrimaryButton(
+                if (sending) "Mengirim…" else if (existing == null) "Kirim Ulasan" else "Simpan Perubahan",
+                enabled = rating > 0 && !sending,
+                onClick = {
+                    sending = true; error = null
+                    scope.launch {
+                        runCatching { SeivSync.submitReview(Review(s.id, s.counselorId, rating, comment.trim())) }
+                            .onSuccess { editing = false }
+                            .onFailure { error = it.message ?: "Gagal mengirim ulasan. Coba lagi." }
+                        sending = false
+                    }
+                },
+            )
+        } else {
+            if (comment.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text("“$comment”", fontSize = 12.sp, color = Seiv.Text, lineHeight = 18.sp)
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Ubah ulasan", fontSize = 12.sp, color = Seiv.Primary, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { editing = true }.padding(vertical = 4.dp),
+            )
+        }
+    }
+}
+
 @Composable
 fun SessionDetailScreen(nav: NavHostController, id: String) {
     val s = SeivStore.sessions.firstOrNull { it.id == id } ?: return
@@ -912,6 +989,10 @@ fun SessionDetailScreen(nav: NavHostController, id: String) {
                     Spacer(Modifier.height(6.dp))
                     Text(s.counselorNote, fontSize = 12.sp, color = Seiv.Text, lineHeight = 18.sp)
                 }
+            }
+            if (s.status == SessionStatus.COMPLETED) {
+                Spacer(Modifier.height(12.dp))
+                ReviewSection(s, c)
             }
             Spacer(Modifier.height(16.dp))
         }

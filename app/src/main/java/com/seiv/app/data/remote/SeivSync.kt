@@ -8,6 +8,7 @@ import com.seiv.app.data.CheckIn
 import com.seiv.app.data.Counselor
 import com.seiv.app.data.JournalEntry
 import com.seiv.app.data.Profile
+import com.seiv.app.data.Review
 import com.seiv.app.data.ScreeningResult
 import com.seiv.app.data.SeivStore
 import com.seiv.app.data.Session
@@ -132,6 +133,30 @@ object SeivSync {
         }
     }
 
+    /**
+     * Kirim/ubah ulasan untuk sesi yang sudah selesai. Saat online menunggu server
+     * (agar penolakan, mis. sesi belum selesai, bisa ditampilkan), lalu muat ulang rating konselor.
+     */
+    suspend fun submitReview(r: Review) {
+        if (online && SupabaseApi.hasSession) {
+            val existing = SeivStore.reviewFor(r.sessionId)
+            if (existing == null) {
+                SupabaseApi.insert(
+                    "reviews",
+                    JSONObject().put("session_id", r.sessionId).put("counselor_id", r.counselorId)
+                        .put("rating", r.rating).put("comment", r.comment),
+                )
+            } else {
+                SupabaseApi.update(
+                    "reviews", "session_id=eq.${r.sessionId}",
+                    JSONObject().put("rating", r.rating).put("comment", r.comment).put("updated_at", Instant.now().toString()),
+                )
+            }
+        }
+        SeivStore.upsertReview(r)
+        refreshInBackground()
+    }
+
     /** Jam yang sudah dipesan orang lain untuk konselor & tanggal tsb (format "HH:mm"). */
     suspend fun bookedSlots(counselorId: String, dateMillis: Long): Set<String> {
         if (!online || !SupabaseApi.hasSession) return emptySet()
@@ -181,6 +206,12 @@ object SeivSync {
             val jo = SupabaseApi.select("journals", "select=*&user_id=eq.$uid&order=created_at.desc")
             val sc = SupabaseApi.select("screenings", "select=*&user_id=eq.$uid&order=created_at.desc")
             val se = SupabaseApi.select("sessions", "select=*&user_id=eq.$uid&order=created_at.desc")
+            runCatching {
+                val rv = SupabaseApi.select("reviews", "select=*&user_id=eq.$uid&order=created_at.desc")
+                SeivStore.setReviews(rv.map { o ->
+                    Review(o.getString("session_id"), o.getString("counselor_id"), o.getInt("rating"), o.optString("comment"), ms(o.getString("created_at")))
+                })
+            }
             SeivStore.replaceRemote(
                 ci.map(::checkInFromJson), jo.map(::journalFromJson),
                 sc.map(::screeningFromJson), se.map(::sessionFromJson),

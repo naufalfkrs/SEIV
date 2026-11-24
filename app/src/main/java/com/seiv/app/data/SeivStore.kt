@@ -109,6 +109,15 @@ data class ScreeningResult(
     }
 }
 
+/** Ulasan mahasiswa untuk sesi yang sudah selesai (1–5 bintang + komentar). */
+data class Review(
+    val sessionId: String,
+    val counselorId: String,
+    val rating: Int,
+    val comment: String,
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
 object SessionStatus {
     const val WAITING = "waiting_verification"
     const val CONFIRMED = "confirmed"
@@ -155,6 +164,24 @@ object SeivStore {
     val screenings = mutableStateListOf<ScreeningResult>()
     val sessions = mutableStateListOf<Session>()
     val counselors = mutableStateListOf<Counselor>().apply { addAll(COUNSELORS) }
+    val reviews = mutableStateListOf<Review>()
+
+    fun reviewFor(sessionId: String) = reviews.firstOrNull { it.sessionId == sessionId }
+
+    fun upsertReview(r: Review) {
+        reviews.removeAll { it.sessionId == r.sessionId }
+        reviews.add(0, r)
+        saveReviews()
+    }
+
+    fun setReviews(list: List<Review>) {
+        reviews.clear(); reviews.addAll(list); saveReviews()
+    }
+
+    private fun saveReviews() = writeArray("reviews", reviews) {
+        JSONObject().put("session", it.sessionId).put("counselor", it.counselorId).put("rating", it.rating)
+            .put("comment", it.comment).put("created", it.createdAt)
+    }
 
     /** Item yang belum berhasil dikirim ke server, format "tabel:id". */
     private val pending = mutableSetOf<String>()
@@ -183,6 +210,9 @@ object SeivStore {
             )
         })
         readArray("counselors", ::counselorFromJson).takeIf { it.isNotEmpty() }?.let { setCounselors(it, persist = false) }
+        reviews.addAll(readArray("reviews") { o ->
+            Review(o.getString("session"), o.getString("counselor"), o.getInt("rating"), o.optString("comment"), o.optLong("created"))
+        })
     }
 
     // ------------------------------------------------------------ akun
@@ -219,8 +249,8 @@ object SeivStore {
         user = null
         prefs.edit().remove("user").apply()
         if (clearData) {
-            checkIns.clear(); journals.clear(); screenings.clear(); sessions.clear(); pending.clear()
-            prefs.edit().remove("checkins").remove("journals").remove("screenings").remove("sessions").remove("pending").apply()
+            checkIns.clear(); journals.clear(); screenings.clear(); sessions.clear(); pending.clear(); reviews.clear()
+            prefs.edit().remove("checkins").remove("journals").remove("screenings").remove("sessions").remove("pending").remove("reviews").apply()
         }
     }
 
