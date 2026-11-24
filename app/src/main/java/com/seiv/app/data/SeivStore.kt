@@ -78,6 +78,10 @@ data class ScreeningResult(
     val cape: Int? = null,
     val capeFrequent: Int? = null,
     val cdrisc: Int? = null,
+    // Total per domain CAPE-P15 (null pada hasil lama)
+    val capePi: Int? = null,
+    val capeBe: Int? = null,
+    val capePa: Int? = null,
 ) {
     val isV2 get() = asq != null && cape != null && cdrisc != null
 
@@ -86,6 +90,7 @@ data class ScreeningResult(
         .put("asq", asq ?: JSONObject.NULL).put("asq_attempt", asqAttempt ?: JSONObject.NULL)
         .put("asq_acute", asqAcute ?: JSONObject.NULL).put("cape", cape ?: JSONObject.NULL)
         .put("cape_frequent", capeFrequent ?: JSONObject.NULL).put("cdrisc", cdrisc ?: JSONObject.NULL)
+        .put("cape_pi", capePi ?: JSONObject.NULL).put("cape_be", capeBe ?: JSONObject.NULL).put("cape_pa", capePa ?: JSONObject.NULL)
 
     companion object {
         private fun JSONObject.intOrNull(k: String) = if (has(k) && !isNull(k)) getInt(k) else null
@@ -96,6 +101,7 @@ data class ScreeningResult(
             id, ts, o.getInt("srq"), o.getInt("gad"), o.getInt("phq"), o.optInt("phq_item9", o.optInt("phq9")),
             o.intOrNull("phq_difficulty"), o.intOrNull("gad_difficulty"), o.intOrNull("asq"), o.intOrNull("asq_attempt"),
             o.boolOrNull("asq_acute"), o.intOrNull("cape"), o.intOrNull("cape_frequent"), o.intOrNull("cdrisc"),
+            o.intOrNull("cape_pi"), o.intOrNull("cape_be"), o.intOrNull("cape_pa"),
         )
     }
 }

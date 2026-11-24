@@ -34,6 +34,8 @@ data class Questionnaire(
     val type: QuestionType,
     val options: List<String>,
     val questions: List<Question>,
+    /** Nilai skor = indeks pilihan + offset (CAPE-P15 dinilai 1–5, lainnya mulai 0). */
+    val scoreOffset: Int = 0,
 ) {
     /** Jumlah butir utama yang dinilai (untuk tampilan "x pertanyaan"). */
     val mainCount get() = questions.count { it.visibleIf == null }
@@ -149,11 +151,11 @@ val ASQ = Questionnaire(
 private val FREQ_LIFE = listOf("Tidak pernah", "Jarang", "Kadang-kadang", "Sering", "Sangat sering")
 
 val CAPE15 = Questionnaire(
-    code = "CAPE-15", title = "CAPE-15", fullName = "Community Assessment of Psychic Experiences-15",
+    code = "CAPE-15", title = "CAPE-15", fullName = "Community Assessment of Psychic Experiences-Positive 15",
     section = 5, period = "sepanjang hidup", minutes = 4,
     description = "Mengenali pengalaman psikologis tertentu yang mungkin pernah kamu alami.",
     instruction = "Untuk setiap pernyataan, tunjukkan seberapa sering Anda mengalaminya sepanjang hidup Anda.",
-    type = QuestionType.SCALE, options = FREQ_LIFE,
+    type = QuestionType.SCALE, options = FREQ_LIFE, scoreOffset = 1,
     questions = listOf(
         "Apakah Anda pernah merasa seolah-olah orang lain memberi petunjuk atau mengatakan sesuatu yang bermakna ganda mengenai Anda?",
         "Apakah Anda pernah merasa seolah-olah beberapa orang menampilkan dirinya berbeda dari yang sebenarnya?",
@@ -209,8 +211,12 @@ fun scoreScreening(answers: List<List<Int?>>): ScreeningResult {
         asq = asq.take(4).count { it == 1 },
         asqAttempt = if (asq[3] == 1) asq[4] else null,
         asqAcute = if (asq.take(4).any { it == 1 }) asq[5] == 1 else false,
-        cape = cape.sumOf { it ?: 0 },
+        // CAPE-P15: butir 1 (tidak pernah) – 5 (sangat sering)
+        cape = cape.sumOf { (it ?: 0) + 1 },
         capeFrequent = cape.count { (it ?: 0) >= 3 },
+        capePi = cape.subList(0, 5).sumOf { (it ?: 0) + 1 },   // ide paranoid, butir 1–5
+        capeBe = cape.subList(5, 12).sumOf { (it ?: 0) + 1 },  // pengalaman aneh, butir 6–12
+        capePa = cape.subList(12, 15).sumOf { (it ?: 0) + 1 }, // anomali persepsi, butir 13–15
         cdrisc = cd.sumOf { it ?: 0 },
     )
 }
@@ -218,24 +224,24 @@ fun scoreScreening(answers: List<List<Int?>>): ScreeningResult {
 private operator fun <T> List<T>.component6() = this[5]
 
 // ---------------------------------------------------------------------------
-// Interpretasi
+// Interpretasi — mengikuti sumber resmi tiap instrumen:
+//  PHQ-9 & GAD-7 : University of Washington, Mental Health Screening (hiv.uw.edu)
+//  ASQ           : NIMH ASQ Suicide Risk Screening Tool (2025)
+//  CAPE-P15      : Núñez et al. 2021, PLoS One (PMC8389461) — cut-off rata-rata 1,47
+//  CD-RISC-10    : 0–4 per butir, total 0–40 (makin tinggi makin resilien)
 // ---------------------------------------------------------------------------
 
 enum class Severity(val label: String, val level: Int) {
     NORMAL("Normal", 0), MINIMAL("Minimal", 0), RINGAN("Ringan", 1), SEDANG("Sedang", 2),
     SEDANG_BERAT("Sedang-berat", 3), BERAT("Berat", 3), INDIKASI("Ada indikasi", 2),
-    NEGATIF("Negatif", 0), POSITIF("Positif", 3), AKUT("Positif akut", 3),
-    RENDAH_CAPE("Rendah", 0), PERLU_TINJAU("Perlu ditinjau", 2),
+    NEGATIF("Negatif", 0), POSITIF("Positif non-akut", 3), AKUT("Positif akut", 3),
+    CAPE_NEGATIF("Negatif", 0), CAPE_POSITIF("Positif", 2),
     RESILIEN_TINGGI("Tinggi", 0), RESILIEN_SEDANG("Sedang", 0), RESILIEN_RENDAH("Rendah", 1),
 }
 
 fun srqSeverity(score: Int) = if (score >= 6) Severity.INDIKASI else Severity.NORMAL
-fun gadSeverity(score: Int) = when {
-    score <= 4 -> Severity.MINIMAL
-    score <= 9 -> Severity.RINGAN
-    score <= 14 -> Severity.SEDANG
-    else -> Severity.BERAT
-}
+
+/** PHQ-9: 0–4 tidak ada–minimal · 5–9 ringan · 10–14 sedang · 15–19 sedang-berat · 20–27 berat. */
 fun phqSeverity(score: Int) = when {
     score <= 4 -> Severity.MINIMAL
     score <= 9 -> Severity.RINGAN
@@ -244,22 +250,36 @@ fun phqSeverity(score: Int) = when {
     else -> Severity.BERAT
 }
 
-/** ASQ: positif bila ada "Ya" pada butir 1–4; akut bila butir 6 juga "Ya". */
+/** GAD-7: 0–4 minimal · 5–9 ringan · 10–14 sedang · 15–21 berat. */
+fun gadSeverity(score: Int) = when {
+    score <= 4 -> Severity.MINIMAL
+    score <= 9 -> Severity.RINGAN
+    score <= 14 -> Severity.SEDANG
+    else -> Severity.BERAT
+}
+
+/** GAD-7 ≥ 8: kemungkinan gangguan kecemasan umum, perlu asesmen diagnostik lanjutan (UW). */
+const val GAD_FURTHER_ASSESSMENT = 8
+
+/**
+ * ASQ (NIMH): "Tidak" pada butir 1–4 = negatif. "Ya" pada salah satu butir 1–4 lalu
+ * "Ya" pada butir akut (pikiran bunuh diri saat ini) = positif akut; "Tidak" = positif non-akut.
+ */
 fun asqSeverity(r: ScreeningResult) = when {
     r.asqAcute == true -> Severity.AKUT
     (r.asq ?: 0) > 0 -> Severity.POSITIF
     else -> Severity.NEGATIF
 }
 
-/**
- * CAPE-15 (dimensi positif). Belum ada titik potong baku untuk versi 5 pilihan ini;
- * aplikasi menandai "perlu ditinjau" bila ≥2 pengalaman dialami "Sering"/"Sangat sering"
- * atau total ≥30 (rata-rata "Kadang-kadang"). Ambang ini bersifat sementara.
- */
-fun capeSeverity(total: Int, frequent: Int) =
-    if (frequent >= 2 || total >= 30) Severity.PERLU_TINJAU else Severity.RENDAH_CAPE
+/** Pengecualian NIMH: positif hanya karena butir 4 dan percobaan terakhir > 1 tahun lalu. */
+fun asqOnlyPastAttempt(r: ScreeningResult) = r.asq == 1 && r.asqAttempt == 1 && r.asqAcute != true
 
-/** CD-RISC-10 (0–40): makin tinggi makin resilien. Rujukan umum: rerata populasi ±32. */
+/** CAPE-P15: rata-rata butir (1–5). Positif bila rata-rata ≥ 1,47. */
+const val CAPE_CUTOFF = 1.47
+fun capeMean(total: Int) = total / 15.0
+fun capeSeverity(total: Int) = if (capeMean(total) >= CAPE_CUTOFF) Severity.CAPE_POSITIF else Severity.CAPE_NEGATIF
+
+/** CD-RISC-10 (0–40): makin tinggi makin resilien. Pembagian kategori masih sementara. */
 fun cdriscSeverity(score: Int) = when {
     score >= 33 -> Severity.RESILIEN_TINGGI
     score >= 26 -> Severity.RESILIEN_SEDANG
@@ -270,29 +290,41 @@ fun srqDescription(score: Int) = if (score >= 6)
     "Ada indikasi gangguan mental emosional. Sebaiknya bicarakan kondisimu dengan tenaga profesional."
 else "Kondisi mentalmu secara umum tampak baik. Tetap jaga keseimbangan hidup dan rutinitas positifmu."
 
-fun gadDescription(score: Int) = when (gadSeverity(score)) {
-    Severity.MINIMAL -> "Tingkat kecemasanmu minimal. Pertahankan kebiasaan baik yang menenangkanmu."
-    Severity.RINGAN -> "Ada kecemasan ringan. Latihan napas dan menulis jurnal bisa membantu meredakannya."
-    Severity.SEDANG -> "Kecemasanmu berada di tingkat sedang. Pertimbangkan untuk berbicara dengan konselor."
-    else -> "Kecemasanmu cukup berat. Kami sangat menyarankan kamu berkonsultasi dengan profesional."
+/** Deskripsi + tindak lanjut yang disarankan (UW). */
+fun phqDescription(score: Int, item9: Int = 0): String {
+    val base = when (phqSeverity(score)) {
+        Severity.MINIMAL -> "Gejala depresi tidak ada atau minimal. Tidak perlu tindakan khusus — terus rawat dirimu."
+        Severity.RINGAN -> "Gejala depresi ringan. Disarankan memantau kondisi dan mengulang skrining PHQ-9 di waktu mendatang."
+        Severity.SEDANG -> "Gejala depresi sedang. Disarankan menyusun rencana penanganan, misalnya konseling dan tindak lanjut berkala."
+        Severity.SEDANG_BERAT -> "Gejala depresi sedang-berat. Disarankan penanganan aktif bersama tenaga profesional (psikoterapi dan/atau medis)."
+        else -> "Gejala depresi berat. Disarankan segera mendapat penanganan dan rujukan ke tenaga kesehatan jiwa."
+    }
+    return if (item9 > 0) "$base Jawabanmu pada butir 9 menunjukkan pikiran menyakiti diri — perlu penilaian risiko bunuh diri oleh tenaga yang kompeten."
+    else base
 }
 
-fun phqDescription(score: Int) = when (phqSeverity(score)) {
-    Severity.MINIMAL -> "Gejala depresi minimal. Terus rawat dirimu dengan aktivitas yang kamu sukai."
-    Severity.RINGAN -> "Ada gejala depresi ringan. Pantau suasana hatimu lewat check-in harian."
-    Severity.SEDANG -> "Gejala depresi tingkat sedang. Berbicara dengan konselor dapat sangat membantu."
-    else -> "Gejala depresimu cukup berat. Segera hubungi tenaga profesional untuk pendampingan."
+fun gadDescription(score: Int): String {
+    val base = when (gadSeverity(score)) {
+        Severity.MINIMAL -> "Kecemasan minimal. Pertahankan kebiasaan baik yang menenangkanmu."
+        Severity.RINGAN -> "Kecemasan ringan. Latihan napas dan menulis jurnal bisa membantu meredakannya."
+        Severity.SEDANG -> "Kecemasan sedang. Pertimbangkan untuk berbicara dengan konselor."
+        else -> "Kecemasan berat. Sangat disarankan berkonsultasi dengan tenaga profesional."
+    }
+    return if (score >= GAD_FURTHER_ASSESSMENT) "$base Skor ≥ 8 menandakan kemungkinan gangguan kecemasan umum, sehingga perlu asesmen lanjutan."
+    else base
 }
 
 fun asqDescription(r: ScreeningResult) = when (asqSeverity(r)) {
-    Severity.AKUT -> "Kamu sedang memiliki pikiran untuk mengakhiri hidup. Keselamatanmu yang utama — hubungi SEJIWA 119 ext. 8, 112, atau orang terdekat sekarang juga."
-    Severity.POSITIF -> "Ada tanda risiko yang perlu ditindaklanjuti. Mohon segera bicara dengan konselor atau tenaga profesional — kamu tidak perlu menghadapinya sendiri."
-    else -> "Tidak ditemukan tanda risiko bunuh diri pada skrining ini."
+    Severity.AKUT -> "Positif akut — ada risiko keselamatan saat ini. Segera hubungi SEJIWA 119 ext. 8, 112, atau orang terdekat; kamu perlu evaluasi keselamatan dan kesehatan jiwa sesegera mungkin."
+    Severity.POSITIF -> if (asqOnlyPastAttempt(r))
+        "Positif non-akut karena riwayat percobaan lebih dari 1 tahun lalu. Tetap disarankan berbicara dengan konselor untuk memastikan kamu mendapat dukungan yang tepat."
+    else "Positif non-akut — ada potensi risiko. Kamu perlu penilaian keselamatan singkat oleh tenaga profesional untuk menentukan langkah selanjutnya. Jangan tunda untuk menghubungi konselor."
+    else -> "Negatif — tidak ditemukan risiko bunuh diri pada skrining ini."
 }
 
-fun capeDescription(total: Int, frequent: Int) = if (capeSeverity(total, frequent) == Severity.PERLU_TINJAU)
-    "Beberapa pengalaman psikologis cukup sering kamu alami. Ini bukan diagnosis — namun sebaiknya ditinjau lebih lanjut bersama tenaga profesional."
-else "Pengalaman psikologis tidak biasa jarang kamu alami."
+fun capeDescription(total: Int) = if (capeSeverity(total) == Severity.CAPE_POSITIF)
+    "Rata-rata skormu ${"%.2f".format(capeMean(total))} (≥ ${"%.2f".format(CAPE_CUTOFF)}). Beberapa pengalaman psikologis tidak biasa cukup sering kamu alami — ini bukan diagnosis, namun sebaiknya ditinjau lebih lanjut bersama tenaga profesional."
+else "Rata-rata skormu ${"%.2f".format(capeMean(total))} (< ${"%.2f".format(CAPE_CUTOFF)}). Pengalaman psikologis tidak biasa jarang kamu alami."
 
 fun cdriscDescription(score: Int) = when (cdriscSeverity(score)) {
     Severity.RESILIEN_TINGGI -> "Resiliensimu tinggi — kamu cenderung mampu bangkit dari tekanan. Pertahankan!"
@@ -300,14 +332,11 @@ fun cdriscDescription(score: Int) = when (cdriscSeverity(score)) {
     else -> "Resiliensimu sedang menurun. Latihan kecil seperti jurnal, napas, dan bercerita bisa membantumu lebih kuat."
 }
 
-/** Tingkat kebutuhan bantuan: 0 = promotif, 1 = preventif, 2 = kuratif (konseling), 3 = darurat. */
-fun ScreeningResult.careLevel(): Int {
-    val cape = cape?.let { capeSeverity(it, capeFrequent ?: 0) }
-    return when {
-        phqItem9 > 0 || asqAcute == true || (asq ?: 0) > 0 -> 3
-        phqSeverity(phq).level >= 2 || gadSeverity(gad).level >= 2 || srq >= 6 || cape == Severity.PERLU_TINJAU -> 2
-        phqSeverity(phq).level == 1 || gadSeverity(gad).level == 1 ||
-            (cdrisc != null && cdriscSeverity(cdrisc) == Severity.RESILIEN_RENDAH) -> 1
-        else -> 0
-    }
+/** Tingkat kebutuhan bantuan: 0 = promotif, 1 = preventif, 2 = kuratif (konseling), 3 = segera/darurat. */
+fun ScreeningResult.careLevel(): Int = when {
+    // ASQ positif (akut/non-akut) atau PHQ-9 butir 9 > 0: perlu penilaian risiko bunuh diri
+    phqItem9 > 0 || asqAcute == true || (asq ?: 0) > 0 -> 3
+    phq >= 10 || gad >= GAD_FURTHER_ASSESSMENT || srq >= 6 || (cape != null && capeSeverity(cape) == Severity.CAPE_POSITIF) -> 2
+    phq >= 5 || gad >= 5 || (cdrisc != null && cdriscSeverity(cdrisc) == Severity.RESILIEN_RENDAH) -> 1
+    else -> 0
 }

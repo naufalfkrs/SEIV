@@ -44,14 +44,18 @@ export interface ScreeningRow {
 /** Ringkasan skor skrining + tanda risiko (sama dengan logika aplikasi). */
 export function screeningSummary(r: ScreeningRow): { text: string; risk: string | null } {
   const parts = [`SRQ-20 ${r.srq}`, `PHQ-9 ${r.phq}`, `GAD-7 ${r.gad}`];
-  if (r.asq !== null) parts.push(`ASQ ${r.asq}/4`);
-  if (r.cape !== null) parts.push(`CAPE-15 ${r.cape} (${r.cape_frequent ?? 0} sering)`);
-  if (r.cdrisc !== null) parts.push(`CD-RISC-10 ${r.cdrisc}`);
+  if (r.asq !== null) parts.push(`ASQ ${r.asq_acute ? "positif akut" : (r.asq ?? 0) > 0 ? "positif non-akut" : "negatif"}`);
+  // CAPE-P15: butir 1–5, rata-rata; positif bila ≥ 1,47 (Núñez et al., 2021)
+  if (r.cape !== null) {
+    const mean = r.cape / 15;
+    parts.push(`CAPE-15 rata-rata ${mean.toFixed(2)} (${mean >= 1.47 ? "positif" : "negatif"})`);
+  }
+  if (r.cdrisc !== null) parts.push(`CD-RISC-10 ${r.cdrisc}/40`);
   const risks: string[] = [];
-  if (r.asq_acute) risks.push("ASQ positif AKUT (pikiran bunuh diri saat ini)");
-  else if ((r.asq ?? 0) > 0) risks.push("ASQ positif");
+  if (r.asq_acute) risks.push("ASQ positif AKUT — perlu evaluasi keselamatan segera");
+  else if ((r.asq ?? 0) > 0) risks.push("ASQ positif non-akut — perlu penilaian keselamatan singkat");
   if (r.asq_attempt === 0) risks.push("percobaan ≤12 bulan terakhir");
-  if (r.phq_item9 > 0) risks.push(`PHQ-9 butir 9 = ${r.phq_item9}`);
+  if (r.phq_item9 > 0) risks.push(`PHQ-9 butir 9 = ${r.phq_item9} — perlu penilaian risiko bunuh diri`);
   return { text: parts.join(" · "), risk: risks.length ? risks.join(" · ") : null };
 }
 

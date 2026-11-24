@@ -324,7 +324,7 @@ fun ScreeningRunScreen(nav: NavHostController) {
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Box(Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(if (sel) c else sf), contentAlignment = Alignment.Center) {
-                                Text(if (showScore) "$v" else "${'A' + v}", color = if (sel) Color.White else c, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Text(if (showScore) "${v + qq.scoreOffset}" else "${'A' + v}", color = if (sel) Color.White else c, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             }
                             Spacer(Modifier.width(12.dp))
                             Text(label, fontSize = 13.sp, color = Seiv.Text, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal)
@@ -396,7 +396,7 @@ fun ScreeningResultScreen(nav: NavHostController, id: String) {
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
             if (level == 3) {
-                CrisisCard { nav.navigate(Routes.REFERRAL) }
+                CrisisCard(acute = r.asqAcute == true) { nav.navigate(Routes.REFERRAL) }
                 Spacer(Modifier.height(12.dp))
             }
             Column(
@@ -422,7 +422,7 @@ fun ScreeningResultScreen(nav: NavHostController, id: String) {
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ScoreBox("${r.asq}", "ASQ", asqSeverity(r).label, Modifier.weight(1f))
-                        ScoreBox("${r.cape}", "CAPE-15", capeSeverity(r.cape!!, r.capeFrequent ?: 0).label, Modifier.weight(1f))
+                        ScoreBox("%.2f".format(capeMean(r.cape!!)), "CAPE-15", capeSeverity(r.cape).label, Modifier.weight(1f))
                         ScoreBox("${r.cdrisc}", "CD-RISC", "Resiliensi ${cdriscSeverity(r.cdrisc!!).label.lowercase()}", Modifier.weight(1f))
                     }
                 }
@@ -431,15 +431,22 @@ fun ScreeningResultScreen(nav: NavHostController, id: String) {
             Text("Detail Per Kuesioner", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Seiv.Text)
             Spacer(Modifier.height(10.dp))
             DetailCard(SRQ20, r.srq, 20, srqSeverity(r.srq), if (r.srq >= 6) "Ada indikasi gangguan mental emosional" else "Tidak ada indikasi gangguan", srqDescription(r.srq))
-            DetailCard(PHQ9, r.phq, 27, phqSeverity(r.phq), "Gejala depresi ${phqSeverity(r.phq).label.lowercase()}", phqDescription(r.phq))
+            DetailCard(
+                PHQ9, r.phq, 27, phqSeverity(r.phq),
+                "Gejala depresi ${phqSeverity(r.phq).label.lowercase()}" + if (r.phqItem9 > 0) " · butir 9 = ${r.phqItem9}" else "",
+                phqDescription(r.phq, r.phqItem9),
+            )
             DetailCard(GAD7, r.gad, 21, gadSeverity(r.gad), "Kecemasan ${gadSeverity(r.gad).label.lowercase()}", gadDescription(r.gad))
             if (r.isV2) {
                 val asqSev = asqSeverity(r)
-                DetailCard(ASQ, r.asq!!, 4, asqSev, if (asqSev == Severity.NEGATIF) "Skrining risiko negatif" else "Skrining risiko positif", asqDescription(r))
-                val capeSev = capeSeverity(r.cape!!, r.capeFrequent ?: 0)
+                DetailCard(ASQ, r.asq!!, 4, asqSev, "Skrining ${asqSev.label.lowercase()}", asqDescription(r))
+                val capeSev = capeSeverity(r.cape!!)
+                val domains = if (r.capePi != null && r.capeBe != null && r.capePa != null)
+                    "\n\nPer domain (rata-rata): ide paranoid ${"%.2f".format(r.capePi / 5.0)} · pengalaman aneh ${"%.2f".format(r.capeBe / 7.0)} · anomali persepsi ${"%.2f".format(r.capePa / 3.0)}"
+                else ""
                 DetailCard(
-                    CAPE15, r.cape, 60, capeSev,
-                    "${r.capeFrequent ?: 0} pengalaman dialami sering", capeDescription(r.cape, r.capeFrequent ?: 0),
+                    CAPE15, r.cape, 75, capeSev,
+                    "Rata-rata ${"%.2f".format(capeMean(r.cape))} · cut-off ${"%.2f".format(CAPE_CUTOFF)}", capeDescription(r.cape) + domains,
                 )
                 DetailCard(CDRISC10, r.cdrisc!!, 40, cdriscSeverity(r.cdrisc), "Resiliensi ${cdriscSeverity(r.cdrisc).label.lowercase()}", cdriscDescription(r.cdrisc))
             } else {
@@ -538,7 +545,7 @@ private fun DetailCard(q: Questionnaire, score: Int, max: Int, severity: Severit
 }
 
 @Composable
-fun CrisisCard(onClick: () -> Unit) {
+fun CrisisCard(acute: Boolean = true, onClick: () -> Unit) {
     SeivCard(Modifier.fillMaxWidth(), color = Seiv.RedSoft, onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("🆘", fontSize = 24.sp)
@@ -546,7 +553,8 @@ fun CrisisCard(onClick: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text("Kamu tidak sendirian", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Seiv.Red)
                 Text(
-                    "Jawabanmu menunjukkan adanya pikiran untuk menyakiti diri atau mengakhiri hidup. Hubungi SEJIWA 119 ext. 8 atau 112 sekarang, atau ketuk untuk melihat bantuan.",
+                    if (acute) "Jawabanmu menunjukkan pikiran untuk mengakhiri hidup saat ini. Keselamatanmu yang utama — hubungi SEJIWA 119 ext. 8 atau 112 sekarang, atau ketuk untuk melihat bantuan."
+                    else "Jawabanmu menunjukkan adanya potensi risiko menyakiti diri. Segera bicarakan dengan konselor atau tenaga profesional. Bila merasa tidak aman, hubungi SEJIWA 119 ext. 8 atau 112.",
                     fontSize = 11.sp, color = Seiv.Text, lineHeight = 16.sp,
                 )
             }

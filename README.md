@@ -117,18 +117,17 @@ bentrok jadwal, dll.) memakai PGlite dengan stub skema `auth` Supabase.
 Urutan: **SRQ-20 → PHQ-9 → GAD-7 → ASQ → CAPE-15 → CD-RISC-10**. Butir PHQ-9 s.d. CD-RISC-10 mengikuti
 *Kuesioner Kesehatan Mental Mahasiswa* (FIKES UB). Logika ada di `app/src/main/java/com/seiv/app/data/Screening.kt`.
 
-| Instrumen | Skor | Interpretasi di aplikasi |
-|---|---|---|
-| SRQ-20 | 0–20 (jumlah "Ya") | ≥6 ada indikasi |
-| PHQ-9 | 0–27 | 0–4 minimal · 5–9 ringan · 10–14 sedang · 15–19 sedang-berat · ≥20 berat; butir 9 > 0 = darurat |
-| GAD-7 | 0–21 | 0–4 minimal · 5–9 ringan · 10–14 sedang · ≥15 berat |
-| ASQ | jumlah "Ya" butir 1–4 | 0 negatif · ≥1 positif (butuh bantuan segera) · butir 6 "Ya" = positif akut |
-| CAPE-15 | 0–60 (0–4 per butir) | *sementara*: perlu ditinjau bila ≥2 butir "Sering/Sangat sering" atau total ≥30 |
-| CD-RISC-10 | 0–40 | *sementara*: ≥33 tinggi · 26–32 sedang · ≤25 rendah |
+| Instrumen | Skor | Interpretasi di aplikasi | Sumber |
+|---|---|---|---|
+| SRQ-20 | 0–20 (jumlah "Ya") | ≥6 ada indikasi | — |
+| PHQ-9 | 0–27 (butir 0–3) | 0–4 tidak ada–minimal · 5–9 ringan · 10–14 sedang · 15–19 sedang-berat · 20–27 berat; butir 9 > 0 → perlu penilaian risiko bunuh diri | [UW](https://www.hiv.uw.edu/page/mental-health-screening/phq-9) |
+| GAD-7 | 0–21 (butir 0–3) | 0–4 minimal · 5–9 ringan · 10–14 sedang · 15–21 berat; ≥8 → perlu asesmen lanjutan | [UW](https://www.hiv.uw.edu/page/mental-health-screening/gad-7) |
+| ASQ | butir 1–4 Ya/Tidak + butir akut | semua "Tidak" = negatif · "Ya" di 1–4 & akut "Tidak" = positif non-akut · akut "Ya" = positif akut | [NIMH ASQ](https://www.nimh.nih.gov/research/research-conducted-at-nimh/asq-toolkit-materials) |
+| CAPE-15 (CAPE-P15) | 15–75 (butir 1–5), dirata-rata | rata-rata ≥ 1,47 = positif; domain: ide paranoid (1–5), pengalaman aneh (6–12), anomali persepsi (13–15) | [Núñez et al. 2021](https://pmc.ncbi.nlm.nih.gov/articles/PMC8389461/) |
+| CD-RISC-10 | 0–40 (butir 0–4) | makin tinggi makin resilien; kategori ≥33 tinggi · 26–32 sedang · ≤25 rendah masih *sementara* | [Yan et al. 2023](https://doi.org/10.1016/j.jadr.2023.100666) — bagian 2.2 belum terverifikasi |
 
-Ambang CAPE-15 dan CD-RISC-10 belum memiliki titik potong baku untuk versi ini — sebaiknya dikonfirmasi tim ahli
-lalu ubah fungsi `capeSeverity` / `cdriscSeverity`. Butir "tingkat kesulitan" PHQ-9/GAD-7 dan butir lanjutan ASQ
-(5–6) hanya muncul bila relevan dan tidak dihitung ke skor total.
+Butir "tingkat kesulitan" PHQ-9/GAD-7 dicatat tetapi tidak dihitung ke skor (sesuai sumber). Uji otomatis aturan
+scoring: `./gradlew :app:testDebugUnitTest` (`ScreeningScoringTest`).
 
 ## Data diri pengguna
 
