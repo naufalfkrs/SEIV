@@ -100,6 +100,7 @@ export interface SessionRow {
   total: number;
   status: SessionStatus;
   counselor_note: string;
+  meeting_url: string;
   created_at: string;
   profiles: { name: string; email: string } | null;
   counselors: { name: string; title: string } | null;

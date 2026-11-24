@@ -109,6 +109,15 @@ data class ScreeningResult(
     }
 }
 
+/** Pesan di ruang chat sesi (mahasiswa ↔ konselor). */
+data class SessionMessage(
+    val id: String,
+    val sessionId: String,
+    val fromCounselor: Boolean,
+    val body: String,
+    val createdAt: Long,
+)
+
 /** Ulasan mahasiswa untuk sesi yang sudah selesai (1–5 bintang + komentar). */
 data class Review(
     val sessionId: String,
@@ -148,6 +157,8 @@ data class Session(
     val counselorNote: String = "",
     /** Waktu terakhir status/pesan konselor berubah di server (untuk urutan notifikasi). */
     val updatedAt: Long = createdAt,
+    /** Tautan rapat (Google Meet, dll.) untuk sesi Voice/Video Call; kosong bila belum dikirim konselor. */
+    val meetingUrl: String = "",
 )
 
 /**
@@ -213,7 +224,7 @@ object SeivStore {
                 o.getString("id"), o.getString("counselor"), o.getLong("date"), o.getString("time"),
                 o.getString("method"), o.optString("note"), o.optBoolean("share"),
                 o.getString("pay"), o.getInt("total"), o.getLong("created"),
-                o.optString("status", SessionStatus.CONFIRMED), o.optString("cnote"), o.optLong("updated", o.getLong("created")),
+                o.optString("status", SessionStatus.CONFIRMED), o.optString("cnote"), o.optLong("updated", o.getLong("created")), o.optString("meet"),
             )
         })
         readArray("counselors", ::counselorFromJson).takeIf { it.isNotEmpty() }?.let { setCounselors(it, persist = false) }
@@ -383,7 +394,7 @@ object SeivStore {
         JSONObject().put("id", it.id).put("counselor", it.counselorId).put("date", it.dateMillis)
             .put("time", it.time).put("method", it.method).put("note", it.note)
             .put("share", it.shareCheckIn).put("pay", it.paymentMethod).put("total", it.total)
-            .put("created", it.createdAt).put("status", it.status).put("cnote", it.counselorNote).put("updated", it.updatedAt)
+            .put("created", it.createdAt).put("status", it.status).put("cnote", it.counselorNote).put("updated", it.updatedAt).put("meet", it.meetingUrl)
     }
 
     private fun counselorToJson(c: Counselor) = JSONObject().put("id", c.id).put("name", c.name).put("role", c.role)

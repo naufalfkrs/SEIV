@@ -107,6 +107,13 @@ Untuk produksi: `npm run build` lalu deploy folder `admin/dist` ke Vercel/Netlif
 
 ---
 
+## Ruang sesi konseling
+
+- **Chat**: ruang chat di aplikasi (mahasiswa) dan panel web (konselor, real-time). Aktif saat sesi *Terkonfirmasi*,
+  menjadi hanya-baca setelah selesai. Balasan konselor dikirim sebagai push notification. Admin hanya bisa membaca.
+- **Voice/Video Call**: konselor/admin menyimpan tautan Google Meet/Zoom di panel → mahasiswa mendapat notifikasi
+  dan tombol **Masuk ke Sesi** membuka tautan mulai 10 menit sebelum jadwal. Nomor pribadi tidak perlu dibagikan.
+
 ## Alur data & privasi
 
 - Data ditulis ke HP dulu, lalu disinkronkan ke Supabase. Jika offline, data masuk antrean dan dikirim ulang otomatis.

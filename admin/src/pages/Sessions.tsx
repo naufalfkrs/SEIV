@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import ChatPanel from "../ChatPanel";
 import ProfileDetails from "../ProfileDetails";
 import {
   fmtDateTime, rupiah, screeningSummary, STATUS_LABEL, supabase,
@@ -131,6 +132,22 @@ function SessionDialog({
   const [clientError, setClientError] = useState<string | null>(null);
   const [profile, setProfile] = useState<Partial<Profile> | null>(null);
   const [review, setReview] = useState<{ rating: number; comment: string } | null>(null);
+  const [meet, setMeet] = useState(s.meeting_url ?? "");
+  const [meetMsg, setMeetMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function saveMeet() {
+    const url = meet.trim();
+    if (url && !/^https:\/\/\S+\.\S+$/.test(url)) {
+      setMeetMsg({ ok: false, text: "Tautan harus diawali https:// (contoh: https://meet.google.com/abc-defg-hij)." });
+      return;
+    }
+    const { error } = await supabase.rpc("set_session_meeting", { p_id: s.id, p_url: url });
+    if (error) setMeetMsg({ ok: false, text: error.message });
+    else {
+      s.meeting_url = url;
+      setMeetMsg({ ok: true, text: url ? "Tautan tersimpan & dikirim ke mahasiswa lewat notifikasi." : "Tautan dihapus." });
+    }
+  }
 
   useEffect(() => {
     if (s.status !== "completed") return;
@@ -188,9 +205,27 @@ function SessionDialog({
         <h3>Data diri mahasiswa</h3>
         {profile ? <ProfileDetails p={profile} /> : <p className="muted small">Memuat…</p>}
 
+        <h3>Ruang sesi</h3>
+        {s.method === "Chat" ? (
+          <ChatPanel sessionId={s.id} canSend={!isAdmin} open={s.status === "confirmed"} />
+        ) : (
+          <div className="meet-row">
+            <label style={{ flex: 1 }}>
+              Tautan {s.method} (Google Meet / Zoom)
+              <input
+                type="url" value={meet} placeholder="https://meet.google.com/xxx-xxxx-xxx"
+                onChange={(e) => { setMeet(e.target.value); setMeetMsg(null); }}
+              />
+            </label>
+            <button className="btn secondary" disabled={meet.trim() === (s.meeting_url ?? "")} onClick={saveMeet}>Simpan tautan</button>
+            {s.meeting_url && <a className="btn ghost" href={s.meeting_url} target="_blank" rel="noreferrer">Buka</a>}
+            {meetMsg && <p className={meetMsg.ok ? "muted small" : "error"}>{meetMsg.text}</p>}
+          </div>
+        )}
+
         <label>
           Pesan untuk mahasiswa (tampil di aplikasi)
-          <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="mis. tautan ruang sesi, persiapan, atau ringkasan sesi" />
+          <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="mis. persiapan sebelum sesi atau ringkasan sesi" />
         </label>
 
         <div className="actions">

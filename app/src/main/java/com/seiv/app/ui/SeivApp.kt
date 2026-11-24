@@ -86,6 +86,7 @@ object Routes {
     const val HISTORY = "history"
     const val NOTIFICATIONS = "notifications"
     const val PROFILE_EDIT = "profile_edit"
+    const val CHAT = "chat"
 }
 
 /** Rute tujuan dari notifikasi yang diketuk; diproses oleh [SeivApp]. */
@@ -203,6 +204,7 @@ fun SeivApp() {
         composable(Routes.REFERRAL) { ReferralScreen(nav) }
         composable(Routes.HISTORY) { CheckInHistoryScreen(nav) }
         composable(Routes.NOTIFICATIONS) { NotificationsScreen(nav) }
+        composable("${Routes.CHAT}/{id}") { ChatScreen(nav, it.arguments?.getString("id").orEmpty()) }
         composable("${Routes.PROFILE_EDIT}?first={first}", arguments = listOf(optionalArg("first"))) {
             ProfileEditScreen(nav, firstTime = it.arguments?.getString("first") == "true")
         }

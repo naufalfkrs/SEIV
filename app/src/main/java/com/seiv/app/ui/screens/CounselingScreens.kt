@@ -899,6 +899,7 @@ private fun ReviewSection(s: Session, c: Counselor) {
 fun SessionDetailScreen(nav: NavHostController, id: String) {
     val s = SeivStore.sessions.firstOrNull { it.id == id } ?: return
     val c = counselorById(s.counselorId)
+    val ctx = LocalContext.current
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(1000); now = System.currentTimeMillis() } }
     // Selama sesi masih menunggu/berjalan, cek server berkala (cadangan bila push terlambat).
@@ -961,7 +962,14 @@ fun SessionDetailScreen(nav: NavHostController, id: String) {
                     else -> "Lunas"
                 })
                 DetailRow(Icons.Outlined.Info, "Status", SessionStatus.label(s.status))
-                DetailRow(Icons.Outlined.Language, "Platform", "SEIV App — Sesi ${s.method.lowercase()} terenkripsi")
+                DetailRow(
+                    Icons.Outlined.Language, "Ruang sesi",
+                    when {
+                        s.method == "Chat" -> "Chat di aplikasi SEIV"
+                        s.meetingUrl.isNotBlank() -> "Tautan dari konselor sudah tersedia"
+                        else -> "Tautan ${s.method.lowercase()} akan dikirim konselor"
+                    },
+                )
             }
             Spacer(Modifier.height(12.dp))
             SeivCard(Modifier.fillMaxWidth()) {
@@ -1008,25 +1016,62 @@ fun SessionDetailScreen(nav: NavHostController, id: String) {
             }
             Spacer(Modifier.height(16.dp))
         }
-        PrimaryButton(
-            if (now >= end) "Sesi telah selesai" else "Masuk ke Sesi", icon = methodIcon(s.method), container = Seiv.PrimaryDark,
-            enabled = now < end && s.status != SessionStatus.CANCELLED && s.status != SessionStatus.COMPLETED,
-            onClick = { showJoin = true },
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-        )
+        val isChat = s.method == "Chat"
+        if (isChat) {
+            // Sesi Chat: ruang chat di dalam aplikasi (riwayat tetap bisa dibaca setelah selesai)
+            PrimaryButton(
+                when (s.status) {
+                    SessionStatus.WAITING -> "Ruang chat terbuka setelah verifikasi"
+                    SessionStatus.CANCELLED -> "Sesi dibatalkan"
+                    SessionStatus.COMPLETED -> "Lihat Riwayat Chat"
+                    else -> "Buka Ruang Chat"
+                },
+                icon = methodIcon(s.method), container = Seiv.PrimaryDark,
+                enabled = s.status == SessionStatus.CONFIRMED || s.status == SessionStatus.COMPLETED,
+                onClick = { nav.navigate("${Routes.CHAT}/${s.id}") },
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+        } else {
+            PrimaryButton(
+                if (now >= end || s.status == SessionStatus.COMPLETED) "Sesi telah selesai" else "Masuk ke Sesi",
+                icon = methodIcon(s.method), container = Seiv.PrimaryDark,
+                enabled = now < end && s.status != SessionStatus.CANCELLED && s.status != SessionStatus.COMPLETED,
+                onClick = {
+                    val canOpen = s.status == SessionStatus.CONFIRMED && s.meetingUrl.isNotBlank() && now >= start - 10 * 60_000
+                    if (canOpen) {
+                        runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(s.meetingUrl))) }
+                            .onFailure { showJoin = true }
+                    } else showJoin = true
+                },
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+        }
     }
     if (showJoin) {
         val verified = s.status == SessionStatus.CONFIRMED
-        val open = verified && now >= start - 10 * 60_000
+        val timeOk = now >= start - 10 * 60_000
+        val hasLink = s.meetingUrl.isNotBlank()
         AlertDialog(
             onDismissRequest = { showJoin = false },
             confirmButton = { TextButton({ showJoin = false }) { Text("Mengerti", color = Seiv.Primary) } },
-            title = { Text(if (open) "Menghubungkan..." else if (!verified) "Menunggu verifikasi" else "Ruang sesi belum dibuka") },
+            title = {
+                Text(
+                    when {
+                        !verified -> "Menunggu verifikasi"
+                        !hasLink -> "Tautan belum dikirim"
+                        !timeOk -> "Ruang sesi belum dibuka"
+                        else -> "Tidak bisa membuka tautan"
+                    },
+                )
+            },
             text = {
                 Text(
-                    if (!verified) "Pembayaranmu sedang diverifikasi admin SEIV. Ruang sesi akan terbuka setelah sesi terkonfirmasi."
-                    else if (open) "Kamu akan terhubung dengan ${c.name} melalui ${s.method}. Pastikan kamu berada di tempat yang nyaman dan tenang."
-                    else "Ruang sesi akan terbuka 10 menit sebelum jadwal (${s.time} WIB). Kami akan mengingatkanmu.",
+                    when {
+                        !verified -> "Pembayaranmu sedang diverifikasi admin SEIV. Ruang sesi akan terbuka setelah sesi terkonfirmasi."
+                        !hasLink -> "${c.name} belum mengirim tautan ${s.method.lowercase()}. Kamu akan mendapat notifikasi begitu tautannya tersedia."
+                        !timeOk -> "Ruang sesi bisa dimasuki 10 menit sebelum jadwal (${s.time} WIB). Tautan dari ${c.name} sudah siap."
+                        else -> "Pastikan aplikasi Google Meet atau browser terpasang, lalu coba lagi."
+                    },
                     fontSize = 13.sp,
                 )
             },

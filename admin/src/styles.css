@@ -109,3 +109,14 @@ tr:last-child td { border-bottom: 0; }
   .content { padding: 16px; }
   .kv { grid-template-columns: 1fr; }
 }
+
+/* Ruang sesi: chat & tautan rapat */
+.chat { display: flex; flex-direction: column; gap: 8px; }
+.chat-log { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 10px; background: var(--bg); border-radius: 12px; }
+.bubble { align-self: flex-start; max-width: 80%; background: #fff; padding: 8px 12px; border-radius: 14px 14px 14px 4px; font-size: 13px; white-space: pre-wrap; }
+.bubble.mine { align-self: flex-end; background: var(--primary); color: #fff; border-radius: 14px 14px 4px 14px; }
+.bubble-time { font-size: 10px; opacity: .7; margin-top: 2px; }
+.chat-input { display: flex; gap: 8px; align-items: flex-end; }
+.chat-input textarea { flex: 1; resize: vertical; }
+.meet-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.meet-row .error, .meet-row .muted { flex-basis: 100%; margin: 0; }

@@ -178,6 +178,23 @@ object SeivSync {
         refreshInBackground()
     }
 
+    // ------------------------------------------------------------------ ruang chat sesi
+
+    /** Semua pesan chat sebuah sesi (lama → baru). Melempar error bila gagal agar layar bisa menampilkan pesan. */
+    suspend fun loadChat(sessionId: String): List<com.seiv.app.data.SessionMessage> =
+        SupabaseApi.select(
+            "chat_messages",
+            "select=id,session_id,from_counselor,body,created_at&session_id=eq.$sessionId&order=created_at.asc&limit=500",
+        ).map(::chatFromJson)
+
+    suspend fun sendChat(sessionId: String, body: String): com.seiv.app.data.SessionMessage? =
+        SupabaseApi.insert("chat_messages", JSONObject().put("session_id", sessionId).put("body", body.trim()))
+            ?.let(::chatFromJson)
+
+    private fun chatFromJson(o: JSONObject) = com.seiv.app.data.SessionMessage(
+        o.getString("id"), o.getString("session_id"), o.optBoolean("from_counselor"), o.getString("body"), ms(o.getString("created_at")),
+    )
+
     /** Jam yang sudah dipesan orang lain untuk konselor & tanggal tsb (format "HH:mm"). */
     suspend fun bookedSlots(counselorId: String, dateMillis: Long): Set<String> {
         if (!online || !SupabaseApi.hasSession) return emptySet()
@@ -318,6 +335,7 @@ object SeivSync {
             shareCheckIn = o.optBoolean("share_check_in"), paymentMethod = o.getString("payment_method"),
             total = o.getInt("total"), createdAt = ms(o.getString("created_at")),
             status = o.optString("status", SessionStatus.WAITING), counselorNote = o.optString("counselor_note"),
+            meetingUrl = o.optString("meeting_url"),
             updatedAt = o.optString("updated_at").takeIf { it.isNotBlank() }?.let(::ms) ?: ms(o.getString("created_at")),
         )
     }
