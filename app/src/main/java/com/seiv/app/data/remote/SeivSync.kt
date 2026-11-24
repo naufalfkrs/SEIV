@@ -216,7 +216,7 @@ object SeivSync {
         try {
             SeivStore.pendingKeys().forEach { key -> runCatching { pushNow(key) } }
             runCatching {
-                val rows = SupabaseApi.select("counselors", "select=*&active=eq.true&order=created_at")
+                val rows = SupabaseApi.select("counselors", "select=*&active=eq.true&order=price.asc,name.asc")
                 SeivStore.setCounselors((0 until rows.length()).map { counselorFromJson(rows.getJSONObject(it)) })
             }
             val uid = SupabaseApi.userId ?: return

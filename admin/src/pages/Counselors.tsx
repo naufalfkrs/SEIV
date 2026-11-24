@@ -13,7 +13,7 @@ export default function Counselors() {
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    const { data, error } = await supabase.from("counselors").select("*").order("created_at");
+    const { data, error } = await supabase.from("counselors").select("*").order("price").order("name");
     if (error) setError(error.message);
     else setRows((data ?? []) as Counselor[]);
   }
