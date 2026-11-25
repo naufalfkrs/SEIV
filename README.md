@@ -115,6 +115,9 @@ Untuk produksi: `npm run build` lalu deploy folder `admin/dist` ke Vercel/Netlif
   menjadi hanya-baca setelah selesai. Balasan konselor dikirim sebagai push notification. Admin hanya bisa membaca.
 - **Voice/Video Call**: konselor/admin menyimpan tautan Google Meet/Zoom di panel → mahasiswa mendapat notifikasi
   dan tombol **Masuk ke Sesi** membuka tautan tepat saat jam sesi dimulai. Nomor pribadi tidak perlu dibagikan.
+- **Pengingat**: `pg_cron` menjalankan `private.send_session_reminders()` tiap menit dan mengirim push ke mahasiswa
+  ±1 jam sebelum sesi, 10 menit sebelum sesi, dan saat ruang sesi dibuka (masing-masing sekali, dicatat di
+  `private.session_reminders`).
 
 ## Alur data & privasi
 
